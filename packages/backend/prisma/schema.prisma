@@ -1,0 +1,202 @@
+// Prisma schema for the Matka Game Platform
+// Requirements: 12.1, 12.2, 12.3
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  user
+  admin
+  superadmin
+}
+
+enum BetType {
+  single
+  jodi
+  single_panna
+  double_panna
+  triple_panna
+  half_sangam
+  full_sangam
+}
+
+enum TransactionType {
+  deposit
+  withdrawal
+  bet_deduction
+  winning_credit
+}
+
+enum TransactionStatus {
+  pending
+  approved
+  rejected
+  completed
+}
+
+enum MarketStatus {
+  open
+  locked
+  closed
+}
+
+enum BetOutcome {
+  pending
+  win
+  loss
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id @default(uuid())
+  username      String   @unique
+  password_hash String
+  role          Role     @default(user)
+  admin_id      String
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now()) @db.Timestamptz
+
+  // Relations
+  admin        Admin         @relation(fields: [admin_id], references: [id])
+  wallet       Wallet?
+  transactions Transaction[]
+  bets         Bet[]
+
+  @@map("users")
+}
+
+model Admin {
+  id              String   @id @default(uuid())
+  username        String   @unique
+  password_hash   String
+  referral_code   String   @unique
+  is_active       Boolean  @default(true)
+  min_bet_points  Int      @default(10)
+  max_bet_points  Int      @default(10000)
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  // Relations
+  users                User[]
+  approved_transactions Transaction[] @relation("ApprovedBy")
+
+  @@map("admins")
+}
+
+model Wallet {
+  id             String   @id @default(uuid())
+  user_id        String   @unique
+  balance_points BigInt   @default(0)
+  held_points    BigInt   @default(0)
+  updated_at     DateTime @updatedAt @db.Timestamptz
+
+  // Relations
+  user User @relation(fields: [user_id], references: [id])
+
+  @@map("wallets")
+}
+
+model Transaction {
+  id             String            @id @default(uuid())
+  user_id        String
+  type           TransactionType
+  amount_points  BigInt
+  balance_after  BigInt
+  status         TransactionStatus @default(pending)
+  upi_ref        String?
+  approved_by    String?
+  created_at     DateTime          @default(now()) @db.Timestamptz
+
+  // Relations
+  user     User   @relation(fields: [user_id], references: [id])
+  approver Admin? @relation("ApprovedBy", fields: [approved_by], references: [id])
+
+  @@index([user_id], name: "idx_transactions_user_id")
+  @@index([status], name: "idx_transactions_status")
+  @@map("transactions")
+}
+
+model Market {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  open_time   String       // HH:MM
+  close_time  String       // HH:MM
+  result_time String       // HH:MM
+  status      MarketStatus @default(open)
+  is_active   Boolean      @default(true)
+  updated_at  DateTime     @updatedAt @db.Timestamptz
+
+  // Relations
+  bets          Bet[]
+  result_cycles ResultCycle[]
+
+  @@index([status], name: "idx_markets_status")
+  @@map("markets")
+}
+
+model Bet {
+  id               String     @id @default(uuid())
+  user_id          String
+  market_id        String
+  result_cycle_id  String
+  bet_type         BetType
+  selection        String
+  points           BigInt
+  outcome          BetOutcome @default(pending)
+  winning_amount   BigInt     @default(0)
+  placed_at        DateTime   @default(now()) @db.Timestamptz
+
+  // Relations
+  user         User        @relation(fields: [user_id], references: [id])
+  market       Market      @relation(fields: [market_id], references: [id])
+  result_cycle ResultCycle @relation(fields: [result_cycle_id], references: [id])
+
+  @@index([user_id], name: "idx_bets_user_id")
+  @@index([market_id, result_cycle_id], name: "idx_bets_market_id_cycle")
+  @@index([outcome], name: "idx_bets_outcome")
+  @@map("bets")
+}
+
+model ResultCycle {
+  id               String   @id @default(uuid())
+  market_id        String
+  cycle_date       DateTime @db.Date
+  open_panna       String
+  close_panna      String
+  jodi             String
+  open_ank         String
+  close_ank        String
+  calculation_done Boolean  @default(false)
+  declared_at      DateTime @db.Timestamptz
+
+  // Relations
+  market Market @relation(fields: [market_id], references: [id])
+  bets   Bet[]
+
+  @@unique([market_id, cycle_date], name: "idx_result_cycles_market_date")
+  @@map("result_cycles")
+}
+
+model PlatformConfig {
+  id                      String   @id @default(uuid())
+  winning_multipliers     Json
+  result_api_endpoint     String
+  result_poll_interval_sec Int     @default(300)
+  upi_details             String
+  feature_flags           Json
+  updated_at              DateTime @updatedAt @db.Timestamptz
+
+  @@map("platform_config")
+}

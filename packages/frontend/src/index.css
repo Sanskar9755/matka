@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    /* Prevent font size inflation on mobile */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+    /* Smooth scrolling for mobile */
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Ensure all interactive elements meet 44×44px touch target minimum */
+  button,
+  a,
+  [role="button"] {
+    @apply min-h-[44px] min-w-[44px];
+  }
+}
