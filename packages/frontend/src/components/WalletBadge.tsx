@@ -24,8 +24,8 @@ export function WalletBadge(): React.ReactElement {
   }, []);
 
   return (
-    <div className="flex items-center gap-1 bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 rounded-full px-3 py-1 text-sm font-semibold">
-      <span>₹</span>
+    <div className="flex items-center gap-1 bg-white/20 text-white rounded-full px-3 py-1 text-sm font-semibold">
+      <span>💰</span>
       <span>{balance !== null ? balance.toLocaleString() : '—'}</span>
     </div>
   );

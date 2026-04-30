@@ -23,6 +23,25 @@ const router = Router();
 router.use(authenticate, requireRole(Role.Admin));
 
 // ---------------------------------------------------------------------------
+// GET /api/admin/profile — Get current admin's own profile (name, referral code)
+// ---------------------------------------------------------------------------
+router.get(
+  '/profile',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminId = req.user!.userId;
+      const admin = await (await import('../../lib/prisma.js')).default.admin.findUnique({
+        where: { id: adminId },
+        select: { id: true, username: true, referral_code: true, min_bet_points: true, max_bet_points: true },
+      });
+      res.status(200).json({ data: admin });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
 // GET /api/admin/users — List users under this admin
 // ---------------------------------------------------------------------------
 router.get(
@@ -115,6 +134,23 @@ router.get(
       const adminId = req.user!.userId;
       const { marketId } = req.params as { marketId: string };
       const result = await adminService.getLiveBetDashboard(adminId, marketId);
+      res.status(200).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/bet-analysis/:marketId — Detailed bet analysis per number/panna
+// ---------------------------------------------------------------------------
+router.get(
+  '/bet-analysis/:marketId',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminId = req.user!.userId;
+      const { marketId } = req.params as { marketId: string };
+      const result = await adminService.getBetAnalysis(adminId, marketId);
       res.status(200).json({ data: result });
     } catch (err) {
       next(err);

@@ -6,7 +6,7 @@
 
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext.js';
+import { AuthProvider, useAuth } from './context/AuthContext.js';
 import { ProtectedRoute } from './components/ProtectedRoute.js';
 import { LoadingSpinner } from './components/LoadingSpinner.js';
 
@@ -24,6 +24,10 @@ const Lobby = lazy(() => import('./pages/user/Lobby.js'));
 const BetPage = lazy(() => import('./pages/user/BetPage.js'));
 const History = lazy(() => import('./pages/user/History.js'));
 const Wallet = lazy(() => import('./pages/user/Wallet.js'));
+const Profile = lazy(() => import('./pages/user/Profile.js'));
+const GameRates = lazy(() => import('./pages/user/GameRates.js'));
+const HowToPlay = lazy(() => import('./pages/user/HowToPlay.js'));
+const NoticeBoard = lazy(() => import('./pages/user/NoticeBoard.js'));
 
 // Admin panel
 const AdminUsers = lazy(() => import('./pages/admin/Users.js'));
@@ -42,11 +46,64 @@ const SuperAdminMarkets = lazy(() => import('./pages/superadmin/Markets.js'));
 // ---------------------------------------------------------------------------
 
 function AdminLayout(): React.ReactElement {
+  const { user, token } = useAuth();
+  const [adminName, setAdminName] = React.useState<string>('');
+
+  React.useEffect(() => {
+    if (!token || !user) return;
+    // Decode username from JWT — userId is the admin's id
+    // Fetch admin profile to get username
+    fetch('/api/admin/profile', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data: { data?: { username?: string } }) => {
+        if (data?.data?.username) setAdminName(data.data.username);
+      })
+      .catch(() => {
+        // fallback: use userId short form
+        setAdminName(user.userId.slice(0, 8));
+      });
+  }, [token, user]);
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      <header className="sticky top-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
-        <span className="text-lg font-bold text-indigo-700 dark:text-indigo-400">Matka Admin</span>
+      <header className="sticky top-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center justify-between">
+        <div>
+          <span className="text-lg font-bold text-indigo-700 dark:text-indigo-400">Matka Admin</span>
+          {adminName && (
+            <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">
+              — <span className="font-semibold text-indigo-600 dark:text-indigo-300">{adminName}</span> ka Panel
+            </span>
+          )}
+        </div>
+        <span className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 px-2 py-1 rounded-full font-medium">
+          Admin
+        </span>
       </header>
+      {/* Admin navigation tabs */}
+      <nav className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 overflow-x-auto">
+        <div className="flex gap-1 min-w-max">
+          {[
+            { to: '/admin/dashboard', label: '📊 Dashboard' },
+            { to: '/admin/users', label: '👥 Users & Wallets' },
+            { to: '/admin/transactions', label: '💰 Transactions' },
+            { to: '/admin/settings', label: '⚙️ Settings' },
+          ].map((item) => (
+            <a
+              key={item.to}
+              href={item.to}
+              className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                window.location.pathname.startsWith(item.to)
+                  ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+              }`}
+            >
+              {item.label}
+            </a>
+          ))}
+        </div>
+      </nav>
       <main className="p-0">
         <Outlet />
       </main>
@@ -95,6 +152,10 @@ function App(): React.ReactElement {
               <Route path="bet/:marketId" element={<BetPage />} />
               <Route path="history" element={<History />} />
               <Route path="wallet" element={<Wallet />} />
+              <Route path="profile" element={<Profile />} />
+              <Route path="game-rates" element={<GameRates />} />
+              <Route path="how-to-play" element={<HowToPlay />} />
+              <Route path="notice-board" element={<NoticeBoard />} />
             </Route>
 
             {/* Admin panel */}

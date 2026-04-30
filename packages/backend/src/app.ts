@@ -15,6 +15,7 @@ import walletRouter from './api/wallet/wallet.router.js';
 import betsRouter from './api/bets/bets.router.js';
 import adminRouter from './api/admin/admin.router.js';
 import superadminRouter from './api/superadmin/superadmin.router.js';
+import userRouter from './api/user/user.router.js';
 import { initSocketServer } from './realtime/socketServer.js';
 
 // ---------------------------------------------------------------------------
@@ -52,6 +53,7 @@ app.use('/api/wallet', walletRouter);
 app.use('/api/bets', betsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/superadmin', superadminRouter);
+app.use('/api/user', userRouter);
 
 // ---------------------------------------------------------------------------
 // Global error handler — must be registered AFTER all routes

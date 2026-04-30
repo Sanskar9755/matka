@@ -1,8 +1,10 @@
 /**
  * Login page.
- * Username + password form with role-based redirect on success.
+ * - Shows login form always (no auto-redirect)
+ * - On successful login, redirects to role-specific panel
+ * - Token expires in 30 min → user is redirected back here
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.js';
 import { ErrorBanner } from '../components/ErrorBanner.js';
@@ -21,7 +23,7 @@ const ROLE_HOME: Record<string, string> = {
 };
 
 export default function Login(): React.ReactElement {
-  const { login, logout } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
 
   const [username, setUsername] = useState('');
@@ -29,15 +31,9 @@ export default function Login(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Auto-logout when login page is opened — always require fresh login
-  useEffect(() => {
-    logout();
-  }, []);
-
   async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
 
-    // Validate fields are not empty before submitting
     if (!username.trim() || !password.trim()) {
       setError('Please enter username and password.');
       return;
@@ -55,8 +51,8 @@ export default function Login(): React.ReactElement {
       login(token);
 
       // Decode role from token for redirect
-      const { jwtDecode } = await import('../utils/jwt.js');
-      const payload = jwtDecode(token) as { role: string };
+      const parts = token.split('.');
+      const payload = JSON.parse(atob(parts[1])) as { role: string };
       const dest = ROLE_HOME[payload.role] ?? '/login';
       navigate(dest, { replace: true });
     } catch (err: unknown) {
@@ -72,9 +68,10 @@ export default function Login(): React.ReactElement {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-950 to-indigo-800 px-4">
       <div className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-8">
-        <h1 className="text-2xl font-bold text-center text-indigo-700 dark:text-indigo-400 mb-6">
+        <h1 className="text-2xl font-bold text-center text-indigo-700 dark:text-indigo-400 mb-2">
           Matka Platform
         </h1>
+        <p className="text-center text-xs text-gray-400 mb-6">Session expires in 30 minutes</p>
 
         {error && (
           <div className="mb-4">

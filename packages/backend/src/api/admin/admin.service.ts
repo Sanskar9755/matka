@@ -18,6 +18,9 @@ export interface UserSummary {
   username: string;
   is_active: boolean;
   created_at: Date;
+  balance_points: number;
+  held_points: number;
+  available_points: number;
 }
 
 export interface ListUsersResult {
@@ -25,7 +28,7 @@ export interface ListUsersResult {
 }
 
 /**
- * List all users managed by the given admin.
+ * List all users managed by the given admin — includes wallet balance.
  */
 export async function listUsers(adminId: string): Promise<ListUsersResult> {
   const users = await prisma.user.findMany({
@@ -35,11 +38,27 @@ export async function listUsers(adminId: string): Promise<ListUsersResult> {
       username: true,
       is_active: true,
       created_at: true,
+      wallet: {
+        select: {
+          balance_points: true,
+          held_points: true,
+        },
+      },
     },
     orderBy: { created_at: 'desc' },
   });
 
-  return { users };
+  return {
+    users: users.map((u) => ({
+      id: u.id,
+      username: u.username,
+      is_active: u.is_active,
+      created_at: u.created_at,
+      balance_points: Number(u.wallet?.balance_points ?? 0),
+      held_points: Number(u.wallet?.held_points ?? 0),
+      available_points: Number((u.wallet?.balance_points ?? 0n) - (u.wallet?.held_points ?? 0n)),
+    })),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -366,6 +385,8 @@ export async function updateBetLimits(
 export interface BetDashboardEntry {
   id: string;
   user_id: string;
+  username: string;
+  market_name: string;
   bet_type: BetType;
   selection: string;
   points: bigint;
@@ -385,26 +406,23 @@ export interface LiveBetDashboardResult {
 
 /**
  * Get all bets for a market's current result cycle, grouped by bet_type
- * with running totals.
- *
- * Returns bets for the current day's result cycle for the given market.
+ * with running totals. Shows market name in results.
+ * Uses latest result cycle (not just today's date).
  */
 export async function getLiveBetDashboard(
   adminId: string,
   marketId: string,
 ): Promise<LiveBetDashboardResult> {
-  // Get today's date (midnight local)
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // Get market name
+  const market = await prisma.market.findUnique({
+    where: { id: marketId },
+    select: { name: true },
+  });
 
-  // Find the current result cycle for this market
-  const resultCycle = await prisma.resultCycle.findUnique({
-    where: {
-      idx_result_cycles_market_date: {
-        market_id: marketId,
-        cycle_date: today,
-      },
-    },
+  // Find the LATEST result cycle for this market (not just today)
+  const resultCycle = await prisma.resultCycle.findFirst({
+    where: { market_id: marketId },
+    orderBy: { cycle_date: 'desc' },
   });
 
   if (!resultCycle) {
@@ -418,6 +436,9 @@ export async function getLiveBetDashboard(
       user: {
         admin_id: adminId,
       },
+    },
+    include: {
+      user: { select: { username: true } },
     },
     orderBy: { placed_at: 'desc' },
   });
@@ -444,11 +465,135 @@ export async function getLiveBetDashboard(
     bets: bets.map((bet) => ({
       id: bet.id,
       user_id: bet.user_id,
+      username: (bet as typeof bet & { user: { username: string } }).user.username,
+      market_name: market?.name ?? '',
       bet_type: bet.bet_type as BetType,
       selection: bet.selection,
       points: bet.points,
       placed_at: bet.placed_at,
     })),
     totals,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// getBetAnalysis — Detailed bet totals per number/panna for each bet type
+// ---------------------------------------------------------------------------
+
+export interface BetAnalysisEntry {
+  selection: string;
+  total_points: number;
+  bet_count: number;
+}
+
+export interface BetAnalysisResult {
+  market_id: string;
+  single: BetAnalysisEntry[];      // 0-9
+  jodi: BetAnalysisEntry[];        // 00-99
+  single_panna: BetAnalysisEntry[];
+  double_panna: BetAnalysisEntry[];
+  triple_panna: BetAnalysisEntry[];
+  half_sangam: BetAnalysisEntry[];
+  full_sangam: BetAnalysisEntry[];
+  summary: {
+    bet_type: string;
+    total_points: number;
+    bet_count: number;
+  }[];
+}
+
+/**
+ * Get detailed bet analysis for a market — totals per number/panna per bet type.
+ * Shows admin exactly how much is bet on each number.
+ */
+export async function getBetAnalysis(
+  adminId: string,
+  marketId: string,
+): Promise<BetAnalysisResult> {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // Find latest result cycle (not just today)
+  const resultCycle = await prisma.resultCycle.findFirst({
+    where: { market_id: marketId },
+    orderBy: { cycle_date: 'desc' },
+  });
+
+  if (!resultCycle) {
+    return {
+      market_id: marketId,
+      single: [],
+      jodi: [],
+      single_panna: [],
+      double_panna: [],
+      triple_panna: [],
+      half_sangam: [],
+      full_sangam: [],
+      summary: [],
+    };
+  }
+
+  // Fetch all bets for this cycle under this admin
+  const bets = await prisma.bet.findMany({
+    where: {
+      result_cycle_id: resultCycle.id,
+      user: { admin_id: adminId },
+    },
+    select: {
+      bet_type: true,
+      selection: true,
+      points: true,
+    },
+  });
+
+  // Group by bet_type → selection → sum points
+  const groups: Record<string, Record<string, { total: bigint; count: number }>> = {
+    single: {},
+    jodi: {},
+    single_panna: {},
+    double_panna: {},
+    triple_panna: {},
+    half_sangam: {},
+    full_sangam: {},
+  };
+
+  for (const bet of bets) {
+    const type = bet.bet_type as string;
+    if (!groups[type]) continue;
+    const existing = groups[type][bet.selection] ?? { total: BigInt(0), count: 0 };
+    groups[type][bet.selection] = {
+      total: existing.total + bet.points,
+      count: existing.count + 1,
+    };
+  }
+
+  // Convert to sorted arrays
+  function toSortedEntries(group: Record<string, { total: bigint; count: number }>): BetAnalysisEntry[] {
+    return Object.entries(group)
+      .map(([selection, data]) => ({
+        selection,
+        total_points: Number(data.total),
+        bet_count: data.count,
+      }))
+      .sort((a, b) => b.total_points - a.total_points); // highest first
+  }
+
+  // Summary per bet type
+  const summary = Object.entries(groups).map(([bet_type, group]) => {
+    const total_points = Object.values(group).reduce((s, d) => s + Number(d.total), 0);
+    const bet_count = Object.values(group).reduce((s, d) => s + d.count, 0);
+    return { bet_type, total_points, bet_count };
+  }).filter(s => s.bet_count > 0);
+
+  return {
+    market_id: marketId,
+    single: toSortedEntries(groups['single'] ?? {}),
+    jodi: toSortedEntries(groups['jodi'] ?? {}),
+    single_panna: toSortedEntries(groups['single_panna'] ?? {}),
+    double_panna: toSortedEntries(groups['double_panna'] ?? {}),
+    triple_panna: toSortedEntries(groups['triple_panna'] ?? {}),
+    half_sangam: toSortedEntries(groups['half_sangam'] ?? {}),
+    full_sangam: toSortedEntries(groups['full_sangam'] ?? {}),
+    summary,
   };
 }
