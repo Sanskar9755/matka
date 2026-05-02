@@ -20,6 +20,7 @@ import type { Job } from 'bullmq';
 
 export interface MarketLockoutJobData {
   marketId: string;
+  action?: 'lock' | 'close';
 }
 
 export interface MarketScheduleInput {
@@ -133,10 +134,10 @@ export async function scheduleAllMarketLockouts(): Promise<void> {
 
 /**
  * Core lockout logic: set market status to 'locked' and publish event.
+ * After result_time passes, market becomes 'closed' for the day.
  * Exported for testability.
  */
 export async function processMarketLockout(marketId: string): Promise<void> {
-  // Fetch the market to check current state
   const market = await prisma.market.findUnique({
     where: { id: marketId },
   });
@@ -146,18 +147,15 @@ export async function processMarketLockout(marketId: string): Promise<void> {
     return;
   }
 
-  // Handle late fires: check if lockout time has actually been reached
   const lockoutTime = getLockoutTime(market.result_time);
   const now = new Date();
 
   if (now < lockoutTime) {
-    console.log(
-      `[MarketLockout] Job fired early for market=${marketId}. Current time ${now.toISOString()} is before lockout ${lockoutTime.toISOString()}. Skipping.`,
-    );
+    console.log(`[MarketLockout] Job fired early for market=${marketId}. Skipping.`);
     return;
   }
 
-  // Set market status to 'locked'
+  // Set market status to 'locked' (betting closed)
   await prisma.market.update({
     where: { id: marketId },
     data: { status: 'locked' },
@@ -165,16 +163,31 @@ export async function processMarketLockout(marketId: string): Promise<void> {
 
   console.log(`[MarketLockout] Market ${marketId} locked at ${now.toISOString()}.`);
 
-  // Publish market:locked event to Redis Pub/Sub
+  // Publish market:locked event
   const channel = `market:${marketId}`;
   const payload = JSON.stringify({
     event: 'market:locked',
     marketId,
     lockedAt: now.toISOString(),
   });
-
   await redis.publish(channel, payload);
-  console.log(`[MarketLockout] Published market:locked event to channel ${channel}.`);
+
+  // Schedule market close after result_time
+  // After result is declared, market should be 'closed' for the day
+  const [rh, rm] = market.result_time.split(':').map(Number);
+  const resultTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), rh, rm, 0);
+  const msUntilResult = Math.max(0, resultTime.getTime() - now.getTime());
+
+  // Add a delayed job to close the market after result time
+  const queue = getMarketLockoutQueue();
+  await queue.add(
+    'close',
+    { marketId, action: 'close' },
+    {
+      delay: msUntilResult + 60000, // 1 min after result time
+      jobId: `market-close:${marketId}:${resultTime.toISOString().slice(0, 10)}`,
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -184,8 +197,27 @@ export async function processMarketLockout(marketId: string): Promise<void> {
 export const marketLockoutWorker = createWorker<MarketLockoutJobData>(
   QUEUE_MARKET_LOCKOUT,
   async (job: Job<MarketLockoutJobData>) => {
-    const { marketId } = job.data;
-    console.log(`[MarketLockout] Processing lockout job ${job.id} for market=${marketId}`);
-    await processMarketLockout(marketId);
+    const { marketId, action } = job.data;
+
+    if (action === 'close') {
+      // Close market for the day — stays closed until midnight reset
+      await prisma.market.update({
+        where: { id: marketId },
+        data: { status: 'closed' },
+      });
+      console.log(`[MarketLockout] Market ${marketId} CLOSED for today.`);
+
+      // Publish market:closed event
+      await redis.publish(`market:${marketId}`, JSON.stringify({
+        event: 'market:closed',
+        marketId,
+        closedAt: new Date().toISOString(),
+        message: 'Market closed for today. Reopens tomorrow.',
+      }));
+    } else {
+      // Default: lock market (betting closed)
+      console.log(`[MarketLockout] Processing lockout job ${job.id} for market=${marketId}`);
+      await processMarketLockout(marketId);
+    }
   },
 );

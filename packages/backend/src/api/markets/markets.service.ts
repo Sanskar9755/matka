@@ -134,6 +134,8 @@ export async function setMarketStatus(id: string, status: MarketStatus): Promise
 
 export interface MarketWithComputedStatus extends Market {
   computed_status: MarketStatus;
+  mins_until_lockout: number;
+  is_open_yet: boolean;        // false = not yet open time, but will open today
 }
 
 export interface ListActiveMarketsResult {
@@ -157,40 +159,33 @@ function getCurrentTimeInMinutes(): number {
 }
 
 /**
- * Compute market status based on current time.
- * 
- * Logic:
- * - If DB status is 'locked', return 'locked' (DB is authoritative)
- * - If current time >= result_time - 20 min → 'locked'
- * - If current time >= close_time → 'closed'
- * - Otherwise → 'open'
+ * Compute market status — simple time-based logic.
+ * DB 'closed' = result declared, stays closed until midnight reset.
+ * DB 'locked' = admin locked or auto-locked.
+ * DB 'open' = check current time against open/close window.
  */
-function computeMarketStatus(market: { status: string; result_time: string; close_time: string }): MarketStatus {
-  // DB status is authoritative for locked state
-  if (market.status === MarketStatus.Locked) {
-    return MarketStatus.Locked;
-  }
-
-  const currentMinutes = getCurrentTimeInMinutes();
-  const resultMinutes = parseTimeToMinutes(market.result_time);
-  const closeMinutes = parseTimeToMinutes(market.close_time);
-  const lockoutMinutes = resultMinutes - 20;
-
-  // Check lockout time (20 minutes before result time)
-  if (currentMinutes >= lockoutMinutes) {
-    return MarketStatus.Locked;
-  }
-
-  // Check close time
-  if (currentMinutes >= closeMinutes) {
-    return MarketStatus.Closed;
-  }
-
+export function computeMarketStatus(market: {
+  status: string;
+  result_time: string;
+  close_time: string;
+  open_time: string;
+}): MarketStatus {
+  if (market.status === MarketStatus.Closed) return MarketStatus.Closed;
+  if (market.status === MarketStatus.Locked) return MarketStatus.Locked;
   return MarketStatus.Open;
 }
 
 /**
- * List all active markets with computed current status.
+ * Get minutes remaining until lockout (negative = already locked).
+ */
+export function minutesUntilLockout(result_time: string): number {
+  const currentMinutes = getCurrentTimeInMinutes();
+  const lockoutMinutes = parseTimeToMinutes(result_time) - 15;
+  return lockoutMinutes - currentMinutes;
+}
+
+/**
+ * List all active markets with computed current status + timing info.
  */
 export async function listActiveMarkets(): Promise<ListActiveMarketsResult> {
   const markets = await prisma.market.findMany({
@@ -202,7 +197,11 @@ export async function listActiveMarkets(): Promise<ListActiveMarketsResult> {
       status: market.status,
       result_time: market.result_time,
       close_time: market.close_time,
+      open_time: market.open_time,
     });
+
+    const mins_until_lockout = minutesUntilLockout(market.result_time);
+    const is_open_yet = true; // No time restriction — always open if status is open
 
     return {
       id: market.id,
@@ -214,6 +213,8 @@ export async function listActiveMarkets(): Promise<ListActiveMarketsResult> {
       is_active: market.is_active,
       updated_at: market.updated_at,
       computed_status,
+      mins_until_lockout,
+      is_open_yet,
     };
   });
 

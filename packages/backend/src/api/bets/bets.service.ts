@@ -109,21 +109,12 @@ export async function placeBet(
     throw new AppError('MARKET_CLOSED');
   }
 
-  // 2. Check market status
+  // 2. Check market status — DB status is authoritative
   if (market.status === MarketStatus.Locked) {
     throw new AppError('MARKET_LOCKED');
   }
   if (market.status === MarketStatus.Closed || !market.is_active) {
     throw new AppError('MARKET_CLOSED');
-  }
-
-  // 3. Time-based lockout check
-  const currentMinutes = getCurrentTimeInMinutes();
-  const resultMinutes = parseTimeToMinutes(market.result_time);
-  const lockoutMinutes = resultMinutes - 20;
-
-  if (currentMinutes >= lockoutMinutes) {
-    throw new AppError('MARKET_LOCKED');
   }
 
   // 4. Get user's admin to check bet limits

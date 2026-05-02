@@ -77,7 +77,7 @@ export function DrawerNav({ isOpen, onClose }: DrawerNavProps): React.ReactEleme
         }`}
       >
         {/* Profile header — dark red like screenshot */}
-        <div className="bg-red-800 px-5 py-6 relative">
+        <div className="px-5 py-6 relative" style={{ background: 'linear-gradient(135deg, #4d40c2 0%, #6c6be9 100%)' }}>
           <button
             onClick={onClose}
             className="absolute top-3 right-3 text-white/70 hover:text-white text-xl w-8 h-8 flex items-center justify-center"

@@ -16,6 +16,7 @@ import betsRouter from './api/bets/bets.router.js';
 import adminRouter from './api/admin/admin.router.js';
 import superadminRouter from './api/superadmin/superadmin.router.js';
 import userRouter from './api/user/user.router.js';
+import notificationsRouter from './api/user/notifications.router.js';
 import { initSocketServer } from './realtime/socketServer.js';
 
 // ---------------------------------------------------------------------------
@@ -54,6 +55,7 @@ app.use('/api/bets', betsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/superadmin', superadminRouter);
 app.use('/api/user', userRouter);
+app.use('/api/user', notificationsRouter);
 
 // ---------------------------------------------------------------------------
 // Global error handler — must be registered AFTER all routes
@@ -71,8 +73,24 @@ initSocketServer(httpServer);
 if (process.env['NODE_ENV'] !== 'test') {
   // Import env lazily so tests can run without all env vars set
   const { env } = await import('./lib/env.js');
-  httpServer.listen(env.PORT, () => {
+  httpServer.listen(env.PORT, async () => {
     console.log(`Matka backend listening on port ${env.PORT}`);
+
+    // Schedule daily reset at midnight — resets all markets to 'open' for next day
+    try {
+      const { scheduleDailyReset } = await import('./workers/dailyReset.js');
+      await scheduleDailyReset();
+    } catch (err) {
+      console.error('[DailyReset] Failed to schedule:', err);
+    }
+
+    // Schedule market lockout jobs for today
+    try {
+      const { scheduleAllMarketLockouts } = await import('./workers/marketLockout.js');
+      await scheduleAllMarketLockouts();
+    } catch (err) {
+      console.error('[MarketLockout] Failed to schedule:', err);
+    }
   });
 }
 

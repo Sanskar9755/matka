@@ -15,21 +15,37 @@ import { BetType, DEFAULT_WINNING_MULTIPLIERS } from '../src/types/index.js';
 const prisma = new PrismaClient();
 
 // ---------------------------------------------------------------------------
-// Standard Matka markets
+// All standard Matka markets with accurate timings (DPBoss standard)
 // ---------------------------------------------------------------------------
 
 const STANDARD_MARKETS = [
-  { name: 'Kalyan',        open_time: '15:45', close_time: '17:45', result_time: '17:55' },
-  { name: 'Milan Day',     open_time: '09:00', close_time: '11:00', result_time: '11:10' },
-  { name: 'Milan Night',   open_time: '21:00', close_time: '23:00', result_time: '23:10' },
-  { name: 'Rajdhani Day',  open_time: '09:30', close_time: '11:30', result_time: '11:40' },
-  { name: 'Rajdhani Night',open_time: '21:30', close_time: '23:30', result_time: '23:40' },
-  { name: 'Main Bazar',    open_time: '21:00', close_time: '23:30', result_time: '23:40' },
-  { name: 'Time Bazar',    open_time: '11:00', close_time: '13:00', result_time: '13:10' },
-  { name: 'Supreme Day',   open_time: '10:00', close_time: '12:00', result_time: '12:10' },
-  { name: 'Supreme Night', open_time: '20:00', close_time: '22:00', result_time: '22:10' },
-  { name: 'Madhur Day',    open_time: '11:30', close_time: '13:30', result_time: '13:40' },
-  { name: 'Madhur Night',  open_time: '20:30', close_time: '22:30', result_time: '22:40' },
+  // Morning markets
+  { name: 'Sridevi Morning',    open_time: '09:30', close_time: '10:30', result_time: '10:35' },
+  { name: 'Rudraksh Morning',   open_time: '10:10', close_time: '11:10', result_time: '11:15' },
+  { name: 'Karnataka Day',      open_time: '10:05', close_time: '11:05', result_time: '11:10' },
+  { name: 'Milan Morning',      open_time: '10:30', close_time: '11:30', result_time: '11:35' },
+  { name: 'Kalyan Morning',     open_time: '10:45', close_time: '11:45', result_time: '11:50' },
+  { name: 'Time Bazar Morning', open_time: '10:00', close_time: '11:00', result_time: '11:05' },
+  // Day markets
+  { name: 'Sridevi',            open_time: '11:30', close_time: '12:30', result_time: '12:35' },
+  { name: 'Madhur Morning',     open_time: '11:00', close_time: '12:00', result_time: '12:05' },
+  { name: 'Time Bazar',         open_time: '13:00', close_time: '14:00', result_time: '14:05' },
+  { name: 'Madhur Day',         open_time: '13:30', close_time: '15:00', result_time: '15:05' },
+  { name: 'Rudraksh Day',       open_time: '13:00', close_time: '14:30', result_time: '14:35' },
+  { name: 'Rajdhani Day',       open_time: '15:00', close_time: '17:00', result_time: '17:05' },
+  { name: 'Milan Day',          open_time: '15:00', close_time: '17:00', result_time: '17:05' },
+  { name: 'Supreme Day',        open_time: '14:00', close_time: '16:00', result_time: '16:05' },
+  { name: 'Kalyan',             open_time: '15:45', close_time: '17:45', result_time: '17:50' },
+  // Evening/Night markets
+  { name: 'Karnataka Night',    open_time: '18:00', close_time: '19:30', result_time: '19:35' },
+  { name: 'Sridevi Night',      open_time: '18:30', close_time: '20:00', result_time: '20:05' },
+  { name: 'Rudraksh Night',     open_time: '19:00', close_time: '20:30', result_time: '20:35' },
+  { name: 'Madhur Night',       open_time: '20:30', close_time: '22:00', result_time: '22:05' },
+  { name: 'Supreme Night',      open_time: '20:00', close_time: '22:00', result_time: '22:05' },
+  { name: 'Milan Night',        open_time: '21:00', close_time: '23:00', result_time: '23:05' },
+  { name: 'Kalyan Night',       open_time: '21:30', close_time: '23:30', result_time: '23:35' },
+  { name: 'Rajdhani Night',     open_time: '21:30', close_time: '23:30', result_time: '23:35' },
+  { name: 'Main Bazar',         open_time: '21:00', close_time: '23:30', result_time: '23:40' },
 ] as const;
 
 // ---------------------------------------------------------------------------

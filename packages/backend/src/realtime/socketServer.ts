@@ -145,8 +145,8 @@ function setupPubSubBridge(io: SocketIOServer): void {
     const { event, data } = envelope;
 
     if (channel.startsWith('market:')) {
-      // Broadcast market:locked and market:result to the market room
-      if (event === 'market:locked' || event === 'market:result') {
+      // Broadcast market:locked, market:result, market:closed to the market room
+      if (event === 'market:locked' || event === 'market:result' || event === 'market:closed') {
         io.to(channel).emit(event, data);
       }
     } else if (channel.startsWith('admin:')) {
