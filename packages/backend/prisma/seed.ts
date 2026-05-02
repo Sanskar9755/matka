@@ -9,7 +9,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { BetType, DEFAULT_WINNING_MULTIPLIERS } from '../src/types/index.js';
 
 const prisma = new PrismaClient();
