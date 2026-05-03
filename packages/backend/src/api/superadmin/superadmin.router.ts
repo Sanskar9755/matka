@@ -114,7 +114,7 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
-// GET /api/superadmin/config — Get platform config
+// GET /api/superadmin/config — Get platform config (SuperAdmin only)
 // ---------------------------------------------------------------------------
 router.get(
   '/config',

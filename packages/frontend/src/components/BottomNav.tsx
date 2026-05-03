@@ -5,7 +5,7 @@ const navItems = [
   { to: '/user/lobby', label: 'Home', icon: '🏠' },
   { to: '/user/history', label: 'Bets', icon: '📋' },
   { to: '/user/wallet', label: 'Wallet', icon: '💰' },
-  { to: '/user/history', label: 'Results', icon: '🏆' },
+  { to: '/user/results', label: 'Results', icon: '🏆' },
   { to: '/user/profile', label: 'Profile', icon: '👤' },
 ];
 

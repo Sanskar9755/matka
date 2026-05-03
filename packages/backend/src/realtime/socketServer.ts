@@ -127,33 +127,42 @@ export function initSocketServer(httpServer: HttpServer): SocketIOServer {
  *   { event: "market:locked" | "market:result" | "bet:new" | "bet:totals", data: <payload> }
  */
 function setupPubSubBridge(io: SocketIOServer): void {
-  // Subscribe to market:* and admin:* patterns
+  // Subscribe to market:*, admin:*, and results:* patterns
   redisSubscriber.psubscribe('market:*', 'admin:*', (err) => {
-    if (err) {
-      console.error('[Socket.IO] psubscribe error:', err.message);
-    }
+    if (err) console.error('[Socket.IO] psubscribe error:', err.message);
+  });
+
+  // Subscribe to global results channel
+  redisSubscriber.subscribe('results:new', (err) => {
+    if (err) console.error('[Socket.IO] subscribe results:new error:', err.message);
   });
 
   redisSubscriber.on('pmessage', (_pattern: string, channel: string, message: string) => {
     let envelope: { event: string; data: unknown };
-    try {
-      envelope = JSON.parse(message) as { event: string; data: unknown };
-    } catch {
-      return;
-    }
+    try { envelope = JSON.parse(message) as { event: string; data: unknown }; }
+    catch { return; }
 
     const { event, data } = envelope;
 
     if (channel.startsWith('market:')) {
-      // Broadcast market:locked, market:result, market:closed to the market room
-      if (event === 'market:locked' || event === 'market:result' || event === 'market:closed') {
+      if (['market:locked','market:result','market:closed'].includes(event)) {
         io.to(channel).emit(event, data);
       }
     } else if (channel.startsWith('admin:')) {
-      // Broadcast bet:new and bet:totals to the admin room
-      if (event === 'bet:new' || event === 'bet:totals') {
+      if (['bet:new','bet:totals'].includes(event)) {
         io.to(channel).emit(event, data);
       }
     }
+  });
+
+  // Global results channel — broadcast to ALL connected clients
+  redisSubscriber.on('message', (channel: string, message: string) => {
+    if (channel !== 'results:new') return;
+    let payload: { event: string; data: unknown };
+    try { payload = JSON.parse(message) as { event: string; data: unknown }; }
+    catch { return; }
+    // Broadcast result:declared to all connected sockets
+    io.emit('result:declared', payload.data);
+    console.info('[Socket.IO] Broadcasted result:declared to all clients');
   });
 }

@@ -22,12 +22,13 @@ interface DrawerNavProps {
 
 const menuItems = [
   { icon: '🏠', label: 'Home', path: '/user/lobby' },
+  { icon: '📊', label: 'Results', path: '/user/results' },
   { icon: '💰', label: 'Funds', path: '/user/wallet' },
   { icon: '📖', label: 'Passbook', path: '/user/history' },
   { icon: '🎯', label: 'Bid History', path: '/user/history' },
   { icon: '🏆', label: 'Winning History', path: '/user/history' },
-  { icon: '📊', label: 'Game Rates', path: '/user/game-rates' },
-  { icon: '📋', label: 'Notice Board/Rules', path: '/user/notice-board' },
+  { icon: '📋', label: 'Game Rates', path: '/user/game-rates' },
+  { icon: '📜', label: 'Notice Board/Rules', path: '/user/notice-board' },
   { icon: '▶️', label: 'How to Play', path: '/user/how-to-play' },
   { icon: '👤', label: 'Profile', path: '/user/profile' },
 ];

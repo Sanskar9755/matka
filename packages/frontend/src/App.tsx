@@ -28,6 +28,7 @@ const Profile = lazy(() => import('./pages/user/Profile.js'));
 const GameRates = lazy(() => import('./pages/user/GameRates.js'));
 const HowToPlay = lazy(() => import('./pages/user/HowToPlay.js'));
 const NoticeBoard = lazy(() => import('./pages/user/NoticeBoard.js'));
+const Results = lazy(() => import('./pages/user/Results.js'));
 
 // Admin panel
 const AdminUsers = lazy(() => import('./pages/admin/Users.js'));
@@ -156,6 +157,7 @@ function App(): React.ReactElement {
               <Route path="game-rates" element={<GameRates />} />
               <Route path="how-to-play" element={<HowToPlay />} />
               <Route path="notice-board" element={<NoticeBoard />} />
+              <Route path="results" element={<Results />} />
             </Route>
 
             {/* Admin panel */}

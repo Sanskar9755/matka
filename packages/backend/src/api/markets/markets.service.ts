@@ -159,6 +159,41 @@ function getCurrentTimeInMinutes(): number {
 }
 
 /**
+ * Weekly off days for each market (0=Sunday, 6=Saturday).
+ * Markets not listed here run all 7 days.
+ */
+const WEEKLY_OFF: Record<string, number[]> = {
+  'Main Bazar':         [0, 6], // Sunday + Saturday
+  'Milan Day':          [0],    // Sunday
+  'Milan Night':        [0],    // Sunday
+  'Milan Morning':      [0],    // Sunday
+  'Rajdhani Day':       [0],    // Sunday
+  'Rajdhani Night':     [0],    // Sunday
+  'Time Bazar':         [0],    // Sunday
+  'Time Bazar Morning': [0],    // Sunday
+  'Madhur Day':         [0],    // Sunday
+  'Madhur Night':       [0],    // Sunday
+  'Madhur Morning':     [0],    // Sunday
+  'Kalyan':             [0],    // Sunday
+  'Kalyan Morning':     [0],    // Sunday
+  'Kalyan Night':       [0],    // Sunday
+  'Sridevi':            [0],    // Sunday
+  'Sridevi Morning':    [0],    // Sunday
+  'Sridevi Night':      [0],    // Sunday
+  'Supreme Day':        [0],    // Sunday
+  'Supreme Night':      [0],    // Sunday
+};
+
+/**
+ * Check if a market is on weekly off today.
+ */
+function isWeeklyOff(marketName: string): boolean {
+  const today = new Date().getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const offDays = WEEKLY_OFF[marketName] ?? [];
+  return offDays.includes(today);
+}
+
+/**
  * Compute market status — simple time-based logic.
  * DB 'closed' = result declared, stays closed until midnight reset.
  * DB 'locked' = admin locked or auto-locked.
@@ -169,7 +204,11 @@ export function computeMarketStatus(market: {
   result_time: string;
   close_time: string;
   open_time: string;
+  name: string;
 }): MarketStatus {
+  // Weekly off — market is closed today
+  if (isWeeklyOff(market.name)) return MarketStatus.Closed;
+
   if (market.status === MarketStatus.Closed) return MarketStatus.Closed;
   if (market.status === MarketStatus.Locked) return MarketStatus.Locked;
   return MarketStatus.Open;
@@ -198,6 +237,7 @@ export async function listActiveMarkets(): Promise<ListActiveMarketsResult> {
       result_time: market.result_time,
       close_time: market.close_time,
       open_time: market.open_time,
+      name: market.name,
     });
 
     const mins_until_lockout = minutesUntilLockout(market.result_time);

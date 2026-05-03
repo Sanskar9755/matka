@@ -17,6 +17,7 @@ import adminRouter from './api/admin/admin.router.js';
 import superadminRouter from './api/superadmin/superadmin.router.js';
 import userRouter from './api/user/user.router.js';
 import notificationsRouter from './api/user/notifications.router.js';
+import resultsRouter from './api/results/results.router.js';
 import { initSocketServer } from './realtime/socketServer.js';
 
 // ---------------------------------------------------------------------------
@@ -45,6 +46,19 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Public endpoint — game rates (no auth required)
+app.get('/api/public/rates', async (_req, res) => {
+  try {
+    const prismaModule = await import('./lib/prisma.js');
+    const config = await prismaModule.default.platformConfig.findFirst({
+      select: { winning_multipliers: true },
+    });
+    res.json({ data: { winning_multipliers: config?.winning_multipliers ?? {} } });
+  } catch {
+    res.json({ data: { winning_multipliers: {} } });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // API routes
 // ---------------------------------------------------------------------------
@@ -56,6 +70,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/superadmin', superadminRouter);
 app.use('/api/user', userRouter);
 app.use('/api/user', notificationsRouter);
+app.use('/api/results', resultsRouter);
 
 // ---------------------------------------------------------------------------
 // Global error handler — must be registered AFTER all routes

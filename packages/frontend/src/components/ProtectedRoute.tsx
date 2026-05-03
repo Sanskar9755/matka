@@ -39,22 +39,17 @@ export function ProtectedRoute({ requiredRole, children }: ProtectedRouteProps):
   const { user, token, logout } = useAuth();
   const navigate = useNavigate();
 
-  // Check token expiry every minute
+  // Check token expiry every 5 minutes
   useEffect(() => {
     if (!token) return;
-
     const checkExpiry = () => {
       if (isTokenExpired(token)) {
         logout();
         navigate('/login', { replace: true });
       }
     };
-
-    // Check immediately
     checkExpiry();
-
-    // Then check every 60 seconds
-    const interval = setInterval(checkExpiry, 60_000);
+    const interval = setInterval(checkExpiry, 5 * 60_000); // every 5 min
     return () => clearInterval(interval);
   }, [token, logout, navigate]);
 

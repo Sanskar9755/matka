@@ -10,6 +10,27 @@ interface Market {
   result_time: string; computed_status: 'open' | 'locked' | 'closed';
   mins_until_lockout: number; is_open_yet: boolean;
 }
+
+// Weekly off schedule (frontend display)
+const WEEKLY_OFF: Record<string, number[]> = {
+  'Main Bazar': [0, 6],
+  'Milan Day': [0], 'Milan Night': [0], 'Milan Morning': [0],
+  'Rajdhani Day': [0], 'Rajdhani Night': [0],
+  'Time Bazar': [0], 'Time Bazar Morning': [0],
+  'Madhur Day': [0], 'Madhur Night': [0], 'Madhur Morning': [0],
+  'Kalyan': [0], 'Kalyan Morning': [0], 'Kalyan Night': [0],
+  'Sridevi': [0], 'Sridevi Morning': [0], 'Sridevi Night': [0],
+  'Supreme Day': [0], 'Supreme Night': [0],
+};
+
+function getWeeklyOffLabel(name: string): string | null {
+  const today = new Date().getDay();
+  const offDays = WEEKLY_OFF[name] ?? [];
+  if (!offDays.includes(today)) return null;
+  if (today === 0) return 'Sunday Off';
+  if (today === 6) return 'Saturday Off';
+  return 'Weekly Off';
+}
 interface MarketsResponse { data: { markets: Market[] } | Market[]; }
 
 export default function Lobby(): React.ReactElement {

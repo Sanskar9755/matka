@@ -79,13 +79,16 @@ export default function BetPage(): React.ReactElement {
     Promise.all([
       api.get<{ data: { markets?: Market[] } | Market[] }>('/markets'),
       api.get<{ data: { balance_points: number } }>('/wallet/balance'),
-      api.get<{ data: { winning_multipliers: Record<string, number> } }>('/superadmin/config').catch(() => null),
+      api.get<{ data: { winning_multipliers: Record<string, number> } }>('/public/rates').catch(() => null),
     ]).then(([mRes, wRes, cRes]) => {
       const raw = mRes.data.data;
       const list: Market[] = Array.isArray(raw) ? raw : (raw as { markets: Market[] }).markets ?? [];
       setMarket(list.find(m => m.id === marketId) ?? null);
       setBalance(wRes.data.data.balance_points);
-      if (cRes) setMultipliers(cRes.data.data.winning_multipliers ?? {});
+      // Config may return 403 for non-superadmin — use defaults in that case
+      if (cRes && cRes.data?.data?.winning_multipliers) {
+        setMultipliers(cRes.data.data.winning_multipliers);
+      }
     }).catch(() => setError('Failed to load.')).finally(() => setLoading(false));
   }, [marketId]);
 

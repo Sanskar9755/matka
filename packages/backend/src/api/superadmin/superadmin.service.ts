@@ -10,6 +10,7 @@ import prisma from '../../lib/prisma.js';
 import { AppError } from '../../middleware/errorHandler.js';
 import { TransactionType, TransactionStatus } from '@matka/types';
 import { enqueueWinningCalculation } from '../../workers/winningCalculation.js';
+import redis from '../../lib/redis.js';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -462,6 +463,46 @@ export async function manuallyEnterResult(
 
   // Enqueue winning-calculation job
   await enqueueWinningCalculation(marketId, resultCycle.id);
+
+  // Broadcast result to all connected clients via Redis pub/sub → Socket.IO
+  const market = await prisma.market.findUnique({
+    where: { id: marketId },
+    select: { name: true },
+  });
+
+  await redis.publish(`market:${marketId}`, JSON.stringify({
+    event: 'market:result',
+    data: {
+      marketId,
+      market_name: market?.name ?? '',
+      result_cycle_id: resultCycle.id,
+      open_panna: resultData.open_panna,
+      close_panna: resultData.close_panna,
+      jodi: resultData.jodi,
+      open_ank: resultData.open_ank,
+      close_ank: resultData.close_ank,
+      declared_at: now.toISOString(),
+      cycle_date: today.toISOString(),
+    },
+  }));
+
+  // Also broadcast to global results channel
+  await redis.publish('results:new', JSON.stringify({
+    event: 'result:declared',
+    data: {
+      marketId,
+      market_name: market?.name ?? '',
+      open_panna: resultData.open_panna,
+      close_panna: resultData.close_panna,
+      jodi: resultData.jodi,
+      open_ank: resultData.open_ank,
+      close_ank: resultData.close_ank,
+      declared_at: now.toISOString(),
+      cycle_date: today.toISOString(),
+    },
+  }));
+
+  console.log(`[Result] Declared for market=${market?.name} (${marketId}): ${resultData.open_panna}-${resultData.jodi}-${resultData.close_panna}`);
 
   return {
     result_cycle_id: resultCycle.id,

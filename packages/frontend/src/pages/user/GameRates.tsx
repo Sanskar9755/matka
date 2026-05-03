@@ -28,7 +28,7 @@ export default function GameRates(): React.ReactElement {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get<ConfigResponse>('/superadmin/config')
+    api.get<ConfigResponse>('/public/rates')
       .then((res) => setMultipliers(res.data.data.winning_multipliers))
       .catch(() => {})
       .finally(() => setLoading(false));
