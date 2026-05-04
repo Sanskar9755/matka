@@ -128,12 +128,12 @@ export function initSocketServer(httpServer: HttpServer): SocketIOServer {
  */
 function setupPubSubBridge(io: SocketIOServer): void {
   // Subscribe to market:*, admin:*, and results:* patterns
-  redisSubscriber.psubscribe('market:*', 'admin:*', (err) => {
+  redisSubscriber.psubscribe('market:*', 'admin:*', (err: Error | null | undefined) => {
     if (err) console.error('[Socket.IO] psubscribe error:', err.message);
   });
 
   // Subscribe to global results channel
-  redisSubscriber.subscribe('results:new', (err) => {
+  redisSubscriber.subscribe('results:new', (err: Error | null | undefined) => {
     if (err) console.error('[Socket.IO] subscribe results:new error:', err.message);
   });
 

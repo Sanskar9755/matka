@@ -38,7 +38,7 @@ export async function publish(channel: string, payload: unknown): Promise<void> 
  * subscribe and psubscribe on the same connection.
  */
 export function subscribe(channel: string, handler: (payload: unknown) => void): void {
-  redisSubscriber.subscribe(channel, (err) => {
+  redisSubscriber.subscribe(channel, (err: Error | null | undefined) => {
     if (err) {
       console.error(`[PubSub] Failed to subscribe to channel "${channel}":`, err.message);
     }
