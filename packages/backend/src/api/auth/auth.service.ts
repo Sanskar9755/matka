@@ -6,7 +6,7 @@
  * with referral_code = 'SUPERADMIN' or username = 'superadmin').
  */
 
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import prisma from '../../lib/prisma.js';
 import redis from '../../lib/redis.js';

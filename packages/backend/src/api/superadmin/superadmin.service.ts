@@ -5,7 +5,7 @@
  * and manual result entry.
  */
 
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 import prisma from '../../lib/prisma.js';
 import { AppError } from '../../middleware/errorHandler.js';
 import { TransactionType, TransactionStatus } from '@matka/types';
