@@ -99,6 +99,22 @@ router.patch(
 );
 
 // ---------------------------------------------------------------------------
+// DELETE /api/superadmin/admins/:id — Delete admin
+// ---------------------------------------------------------------------------
+router.delete(
+  '/admins/:id',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params as { id: string };
+      await superadminService.deleteAdmin(id);
+      res.status(200).json({ data: { success: true } });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
 // GET /api/superadmin/analytics — Global analytics
 // ---------------------------------------------------------------------------
 router.get(

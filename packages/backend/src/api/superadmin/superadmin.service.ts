@@ -208,6 +208,23 @@ export async function setAdminStatus(
 }
 
 // ---------------------------------------------------------------------------
+// deleteAdmin
+// ---------------------------------------------------------------------------
+
+/**
+ * Delete an admin account.
+ * Cannot delete superadmin (username === 'superadmin').
+ */
+export async function deleteAdmin(id: string): Promise<void> {
+  const admin = await prisma.admin.findUnique({ where: { id } });
+  if (!admin) throw new AppError('NOT_FOUND');
+  if (admin.username === 'superadmin' || admin.referral_code === 'SUPERADMIN') {
+    throw new AppError('FORBIDDEN');
+  }
+  await prisma.admin.delete({ where: { id } });
+}
+
+// ---------------------------------------------------------------------------
 // listAdmins
 // ---------------------------------------------------------------------------
 
