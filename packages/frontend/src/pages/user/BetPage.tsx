@@ -12,7 +12,7 @@ interface Market {
   mins_until_lockout: number; is_open_yet: boolean;
 }
 
-interface SelectedBet { id: string; selection: string; points: string; betType: BetType; }
+interface SelectedBet { id: string; selection: string; points: string; betType: BetType; session: 'open' | 'close'; }
 
 // Exact official panna lists
 const SP: Record<number, string[]> = {
@@ -139,7 +139,7 @@ export default function BetPage(): React.ReactElement {
 
   function addBet() {
     if (!currentSel.trim() || !currentPts.trim() || parseInt(currentPts) <= 0) return;
-    setBets(p => [...p, { id: Date.now().toString(), selection: currentSel.trim(), points: currentPts, betType }]);
+    setBets(p => [...p, { id: Date.now().toString(), selection: currentSel.trim(), points: currentPts, betType, session }]);
     setCurrentSel('');
     setCurrentPts('');
   }
@@ -155,7 +155,7 @@ export default function BetPage(): React.ReactElement {
       const pts = parseInt(bet.points);
       if (!pts || pts <= 0) continue;
       try {
-        await api.post('/bets', { marketId, betType: bet.betType, selection: bet.selection, points: pts });
+        await api.post('/bets', { marketId, betType: bet.betType, selection: bet.selection, points: pts, session: bet.session });
         ok++;
       } catch { fail++; }
     }
@@ -318,7 +318,9 @@ export default function BetPage(): React.ReactElement {
             <div className="mb-4 bg-brand-50 border border-brand-200 rounded-2xl p-3">
               <div className="flex items-center gap-2 mb-2">
                 <span className="font-mono font-bold text-brand-700 text-lg">{currentSel}</span>
-                <span className="text-xs bg-brand-100 text-brand-600 px-2 py-0.5 rounded-full">{session === 'open' ? 'Open' : 'Close'}</span>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${session === 'open' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                  {session === 'open' ? '🟢 Open' : '🔴 Close'}
+                </span>
               </div>
               <div className="flex gap-2">
                 <input type="number" min={1} value={currentPts} onChange={e => setCurrentPts(e.target.value)}
@@ -377,6 +379,9 @@ export default function BetPage(): React.ReactElement {
                         return (
                           <div key={bet.id} className="px-3 py-2 flex items-center gap-2">
                             <span className="font-mono font-bold text-brand-700 text-base w-14 flex-shrink-0">{bet.selection}</span>
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${bet.session === 'open' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {bet.session === 'open' ? 'Open' : 'Close'}
+                            </span>
                             <input type="number" min={1} value={bet.points}
                               onChange={e => setBets(p => p.map(b => b.id === bet.id ? { ...b, points: e.target.value } : b))}
                               className="flex-1 border border-brand-200 rounded-lg px-2 py-1.5 text-sm bg-brand-50 text-brand-800 focus:outline-none focus:border-brand-500" />
