@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/app.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/app.js",
+    "start": "node --env-file=.env dist/app.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -20,8 +20,10 @@
   "dependencies": {
     "@matka/types": "*",
     "@prisma/client": "5.22.0",
+    "axios": "^1.7.7",
     "bcrypt": "5.1.1",
     "bullmq": "5.13.2",
+    "cheerio": "^1.2.0",
     "cors": "2.8.5",
     "express": "4.21.1",
     "ioredis": "5.4.1",
@@ -35,11 +37,11 @@
     "@types/express": "5.0.0",
     "@types/jsonwebtoken": "9.0.7",
     "@types/node": "22.9.0",
+    "@types/supertest": "6.0.2",
     "@vitest/coverage-v8": "2.1.5",
     "fast-check": "3.23.1",
     "prisma": "5.22.0",
     "supertest": "7.0.0",
-    "@types/supertest": "6.0.2",
     "tsx": "4.19.2",
     "typescript": "5.6.3",
     "vitest": "2.1.5"

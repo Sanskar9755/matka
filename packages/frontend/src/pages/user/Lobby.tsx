@@ -11,6 +11,16 @@ interface Market {
   mins_until_lockout: number; is_open_yet: boolean;
 }
 
+// Convert HH:MM (24hr) to 12hr AM/PM format
+function to12hr(time: string): string {
+  const [hStr, mStr] = time.split(':');
+  let h = parseInt(hStr);
+  const m = mStr;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${m} ${ampm}`;
+}
+
 // Weekly off schedule (frontend display)
 const WEEKLY_OFF: Record<string, number[]> = {
   'Main Bazar': [0, 6],
@@ -23,15 +33,30 @@ const WEEKLY_OFF: Record<string, number[]> = {
   'Supreme Day': [0], 'Supreme Night': [0],
 };
 
-function getWeeklyOffLabel(name: string): string | null {
-  const today = new Date().getDay();
-  const offDays = WEEKLY_OFF[name] ?? [];
-  if (!offDays.includes(today)) return null;
-  if (today === 0) return 'Sunday Off';
-  if (today === 6) return 'Saturday Off';
-  return 'Weekly Off';
-}
 interface MarketsResponse { data: { markets: Market[] } | Market[]; }
+
+// Countdown timer hook — counts down to a target HH:MM time today
+function useCountdown(targetTime: string): string {
+  const [countdown, setCountdown] = useState('');
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      const [th, tm] = targetTime.split(':').map(Number);
+      // lockout = 15 min before result
+      const lockoutMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), th, tm - 15, 0).getTime();
+      const diff = lockoutMs - now.getTime();
+      if (diff <= 0) { setCountdown('Closing soon'); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setCountdown(h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [targetTime]);
+  return countdown;
+}
 
 export default function Lobby(): React.ReactElement {
   const navigate = useNavigate();
@@ -77,11 +102,12 @@ export default function Lobby(): React.ReactElement {
     const isOpen = market.computed_status === 'open';
     const isLocked = market.computed_status === 'locked';
     const isClosed = market.computed_status === 'closed';
+    const countdown = useCountdown(market.result_time);
 
     return (
       <div
-        onClick={() => !isClosed && navigate(`/user/bet/${market.id}`)}
-        className={`rounded-2xl overflow-hidden shadow-md transition-all ${isClosed ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer active:scale-95'}`}
+        onClick={() => !isClosed && !isLocked && navigate(`/user/bet/${market.id}`)}
+        className={`rounded-2xl overflow-hidden shadow-md transition-all ${isClosed || isLocked ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer active:scale-95'}`}
         style={{ background: isOpen ? 'linear-gradient(135deg, #5b4fdc, #6c6be9)' : isLocked ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'linear-gradient(135deg, #6b7280, #4b5563)' }}
       >
         <div className="px-4 py-3 flex items-center justify-between">
@@ -94,20 +120,20 @@ export default function Lobby(): React.ReactElement {
           <div className="grid grid-cols-3 gap-2 text-center mb-2">
             <div>
               <p className="text-white/60 text-xs">Open</p>
-              <p className="text-white font-bold text-sm">{market.open_time}</p>
+              <p className="text-white font-bold text-sm">{to12hr(market.open_time)}</p>
             </div>
             <div>
               <p className="text-white/60 text-xs">Close</p>
-              <p className="text-white font-bold text-sm">{market.close_time}</p>
+              <p className="text-white font-bold text-sm">{to12hr(market.close_time)}</p>
             </div>
             <div>
               <p className="text-white/60 text-xs">Result</p>
-              <p className="text-white font-bold text-sm">{market.result_time}</p>
+              <p className="text-white font-bold text-sm">{to12hr(market.result_time)}</p>
             </div>
           </div>
-          {isOpen && market.mins_until_lockout > 0 && market.mins_until_lockout <= 60 && (
+          {isOpen && countdown && (
             <div className="bg-yellow-400/20 rounded-lg px-3 py-1.5 text-center mb-2">
-              <p className="text-yellow-200 text-xs font-medium">⏱ Closes in {market.mins_until_lockout} min</p>
+              <p className="text-yellow-200 text-xs font-medium">⏱ Bet closes in {countdown}</p>
             </div>
           )}
           {isOpen && (

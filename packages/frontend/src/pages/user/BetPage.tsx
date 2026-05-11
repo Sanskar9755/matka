@@ -6,6 +6,15 @@ import { ErrorBanner } from '../../components/ErrorBanner.js';
 
 type BetType = 'single' | 'jodi' | 'single_panna' | 'double_panna' | 'triple_panna' | 'half_sangam' | 'full_sangam';
 
+// Convert HH:MM (24hr) to 12hr AM/PM
+function to12hr(time: string): string {
+  const [hStr, mStr] = time.split(':');
+  let h = parseInt(hStr);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${mStr} ${ampm}`;
+}
+
 interface Market {
   id: string; name: string; open_time: string; close_time: string;
   result_time: string; computed_status: 'open' | 'locked' | 'closed';
@@ -92,15 +101,15 @@ export default function BetPage(): React.ReactElement {
     }).catch(() => setError('Failed to load.')).finally(() => setLoading(false));
   }, [marketId]);
 
-  // Countdown to result
+  // Countdown to lockout (result_time - 15 min)
   useEffect(() => {
     if (!market) return;
     const tick = () => {
       const now = new Date();
       const [rh, rm] = market.result_time.split(':').map(Number);
-      const resultMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), rh, rm).getTime();
-      const diff = resultMs - now.getTime();
-      if (diff <= 0) { setCountdown('Result Time!'); return; }
+      const lockoutMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), rh, rm - 15, 0).getTime();
+      const diff = lockoutMs - now.getTime();
+      if (diff <= 0) { setCountdown('Closing soon!'); return; }
       const h = Math.floor(diff / 3600000);
       const m = Math.floor((diff % 3600000) / 60000);
       const s = Math.floor((diff % 60000) / 1000);
@@ -183,7 +192,7 @@ export default function BetPage(): React.ReactElement {
           className="w-10 h-10 bg-brand-100 text-brand-700 rounded-xl flex items-center justify-center font-bold text-lg">←</button>
         <div className="flex-1">
           <h1 className="text-xl font-bold text-brand-800">{market.name}</h1>
-          <p className="text-xs text-brand-500">{market.open_time} – {market.close_time} · Result: {market.result_time}</p>
+          <p className="text-xs text-brand-500">{to12hr(market.open_time)} – {to12hr(market.close_time)} · Result: {to12hr(market.result_time)}</p>
         </div>
         <div className={`text-xs font-bold px-3 py-1.5 rounded-full ${
           isClosed ? 'bg-gray-100 text-gray-600' :

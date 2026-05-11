@@ -91,6 +91,14 @@ if (process.env['NODE_ENV'] !== 'test') {
   httpServer.listen(env.PORT, async () => {
     console.log(`Matka backend listening on port ${env.PORT}`);
 
+    // Start result poller (scrapes external site for live results)
+    try {
+      const { startResultPoller } = await import('./workers/resultPoller.js');
+      startResultPoller();
+    } catch (err) {
+      console.error('[ResultPoller] Failed to start:', err);
+    }
+
     // Schedule daily reset at midnight — resets all markets to 'open' for next day
     try {
       const { scheduleDailyReset } = await import('./workers/dailyReset.js');

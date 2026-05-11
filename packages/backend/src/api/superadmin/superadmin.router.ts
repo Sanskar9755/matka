@@ -207,4 +207,20 @@ router.post(
   },
 );
 
+// ---------------------------------------------------------------------------
+// POST /api/superadmin/poll-results — Manually trigger result poll
+// ---------------------------------------------------------------------------
+router.post(
+  '/poll-results',
+  async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { triggerPollNow } = await import('../../workers/resultPoller.js');
+      const result = await triggerPollNow();
+      res.status(200).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 export default router;

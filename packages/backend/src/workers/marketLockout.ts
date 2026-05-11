@@ -44,11 +44,11 @@ function getTodayAtTime(timeStr: string): Date {
 }
 
 /**
- * Calculate the lockout time for a market: result_time − 20 minutes.
+ * Calculate the lockout time for a market: result_time − 15 minutes.
  */
 function getLockoutTime(resultTime: string): Date {
   const resultDate = getTodayAtTime(resultTime);
-  return new Date(resultDate.getTime() - 20 * 60 * 1000);
+  return new Date(resultDate.getTime() - 15 * 60 * 1000);
 }
 
 /**
