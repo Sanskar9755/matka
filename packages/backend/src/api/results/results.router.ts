@@ -17,16 +17,12 @@ router.get('/', async (_req: Request, res: Response, next: NextFunction): Promis
         declared_at: {
           gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
         },
-        OR: [
-          { open_panna: { not: '' } },
-          { close_panna: { not: '' } },
-        ],
       },
       include: {
         market: { select: { name: true } },
       },
       orderBy: [{ cycle_date: 'desc' }, { declared_at: 'desc' }],
-      take: 200,
+      take: 500,
     });
 
     res.status(200).json({
