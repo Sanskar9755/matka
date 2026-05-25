@@ -12,6 +12,7 @@ interface BetHistoryItem {
   id: string;
   market_name: string;
   bet_type: string;
+  session: string;
   selection: string;
   points: number;
   outcome: 'pending' | 'win' | 'loss';
@@ -103,6 +104,11 @@ export default function History(): React.ReactElement {
                 <span className="font-medium text-gray-800 dark:text-gray-200">
                   {BET_TYPE_LABELS[bet.bet_type] ?? bet.bet_type}
                 </span>
+              </span>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                bet.session === 'open' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              }`}>
+                {bet.session === 'open' ? '🟢 Open' : '🔴 Close'}
               </span>
               <span>Selection: <span className="font-mono font-medium">{bet.selection}</span></span>
               <span>Points: <span className="font-medium">{bet.points}</span></span>

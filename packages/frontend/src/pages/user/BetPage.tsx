@@ -17,7 +17,9 @@ function to12hr(time: string): string {
 
 interface Market {
   id: string; name: string; open_time: string; close_time: string;
-  result_time: string; computed_status: 'open' | 'locked' | 'closed';
+  result_time: string; open_result_time: string;
+  computed_status: 'open' | 'locked' | 'closed';
+  open_session_locked: boolean;
   mins_until_lockout: number; is_open_yet: boolean;
 }
 
@@ -141,7 +143,17 @@ export default function BetPage(): React.ReactElement {
 
   const isLocked = market?.computed_status === 'locked';
   const isClosed = market?.computed_status === 'closed';
+  const isOpenLocked = market?.open_session_locked ?? false; // open bets locked (open result declared)
   const canBet = !isLocked && !isClosed;
+  const canOpenBet = canBet && !isOpenLocked;
+  const canCloseBet = canBet;
+
+  // Auto-switch to close session when open gets locked
+  useEffect(() => {
+    if (isOpenLocked && session === 'open') {
+      setSession('close');
+    }
+  }, [isOpenLocked, session]);
 
   const showPanaGrid = ['single_panna','double_panna','triple_panna'].includes(betType);
   const pannaData = betType === 'single_panna' ? SP : betType === 'double_panna' ? DP : TP;
@@ -238,15 +250,26 @@ export default function BetPage(): React.ReactElement {
         <>
           {/* Open / Close session */}
           <div className="flex gap-2 mb-4">
-            <button onClick={() => setSession('open')}
-              className={`flex-1 py-3 rounded-2xl font-bold text-sm transition-all ${session === 'open' ? 'bg-brand-600 text-white shadow-md' : 'bg-brand-50 text-brand-600 border border-brand-200'}`}>
-              🟢 Open Bet
+            <button onClick={() => canOpenBet && setSession('open')}
+              disabled={!canOpenBet}
+              className={`flex-1 py-3 rounded-2xl font-bold text-sm transition-all ${
+                !canOpenBet ? 'bg-gray-200 text-gray-400 cursor-not-allowed' :
+                session === 'open' ? 'bg-brand-600 text-white shadow-md' : 'bg-brand-50 text-brand-600 border border-brand-200'
+              }`}>
+              {!canOpenBet ? '🔒 Open Locked' : '🟢 Open Bet'}
             </button>
             <button onClick={() => setSession('close')}
               className={`flex-1 py-3 rounded-2xl font-bold text-sm transition-all ${session === 'close' ? 'bg-red-600 text-white shadow-md' : 'bg-red-50 text-red-600 border border-red-200'}`}>
               🔴 Close Bet
             </button>
           </div>
+
+          {/* Open session locked banner */}
+          {isOpenLocked && canCloseBet && (
+            <div className="bg-orange-50 border border-orange-200 rounded-2xl px-4 py-3 mb-4 text-center">
+              <p className="text-orange-700 font-bold text-sm">🔒 Open Result Declared — Only Close Bets Accepted</p>
+            </div>
+          )}
 
           {/* Bet type */}
           <div className="mb-4">

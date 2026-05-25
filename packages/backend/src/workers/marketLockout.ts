@@ -1,12 +1,11 @@
 /**
  * Market Lockout Worker.
  *
- * Schedules and processes BullMQ delayed jobs that lock markets at their
- * lockout time (result_time − 20 minutes).
+ * Schedules two independent BullMQ delayed jobs per market:
+ *   1. open-lock: fires at open_result_time − 20 min → sets open_session_locked = true
+ *   2. close-lock: fires at close_time − 20 min → sets status = 'locked'
  *
- * On server startup, call `scheduleAllMarketLockouts()` to schedule jobs
- * for all active markets. After any market create/edit, call
- * `scheduleMarketLockout(market)` to reschedule that market's job.
+ * Both locks reset at midnight via dailyReset.ts.
  */
 
 import prisma from '../lib/prisma.js';
@@ -20,12 +19,14 @@ import type { Job } from 'bullmq';
 
 export interface MarketLockoutJobData {
   marketId: string;
-  action?: 'lock' | 'close';
+  action?: 'open-lock' | 'close-lock' | 'close';
 }
 
 export interface MarketScheduleInput {
   id: string;
-  result_time: string; // HH:MM
+  open_result_time: string; // HH:MM — open session locks 20 min before this
+  close_time: string;       // HH:MM — close session locks 20 min before this
+  result_time: string;      // HH:MM — market closes 1 min after this
   is_active: boolean;
 }
 
@@ -33,88 +34,81 @@ export interface MarketScheduleInput {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Parse a time string (HH:MM) and return a Date for today at that time (local).
- */
 function getTodayAtTime(timeStr: string): Date {
   const [hours, minutes] = timeStr.split(':').map(Number);
   const now = new Date();
-  const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
-  return target;
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
 }
 
-/**
- * Calculate the lockout time for a market: result_time − 15 minutes.
- */
-function getLockoutTime(resultTime: string): Date {
-  const resultDate = getTodayAtTime(resultTime);
-  return new Date(resultDate.getTime() - 15 * 60 * 1000);
+function getOpenLockoutTime(openResultTime: string): Date {
+  return new Date(getTodayAtTime(openResultTime).getTime() - 20 * 60 * 1000);
 }
 
-/**
- * Calculate milliseconds until a target Date from now.
- * Returns 0 if the target is in the past.
- */
+function getLockoutTime(closeTime: string): Date {
+  return new Date(getTodayAtTime(closeTime).getTime() - 20 * 60 * 1000);
+}
+
 function msUntil(target: Date): number {
-  const diff = target.getTime() - Date.now();
-  return Math.max(0, diff);
+  return Math.max(0, target.getTime() - Date.now());
 }
 
 // ---------------------------------------------------------------------------
 // scheduleMarketLockout
 // ---------------------------------------------------------------------------
 
-/**
- * Schedule a delayed BullMQ job to lock a market at its lockout time.
- * If the lockout time has already passed today, the job is not scheduled.
- *
- * @param market  Market object with id and result_time
- */
 export async function scheduleMarketLockout(market: MarketScheduleInput): Promise<void> {
-  if (!market.is_active) {
-    return;
-  }
-
-  const lockoutTime = getLockoutTime(market.result_time);
-  const delay = msUntil(lockoutTime);
-
-  if (delay === 0 && lockoutTime.getTime() < Date.now()) {
-    console.log(
-      `[MarketLockout] Lockout time for market=${market.id} has already passed today. Skipping schedule.`,
-    );
-    return;
-  }
+  if (!market.is_active) return;
 
   const queue = getMarketLockoutQueue();
+  const today = new Date().toISOString().slice(0, 10);
 
-  // Use a deterministic jobId so rescheduling replaces the existing job
-  const jobId = `market-lockout:${market.id}:${lockoutTime.toISOString().slice(0, 10)}`;
+  // --- Job 1: open-lock ---
+  if (market.open_result_time) {
+    const openLockTime = getOpenLockoutTime(market.open_result_time);
+    const openDelay = msUntil(openLockTime);
 
-  await queue.add(
-    'lockout',
-    { marketId: market.id },
-    {
-      delay,
-      jobId,
-    },
-  );
+    if (openDelay > 0 || openLockTime.getTime() >= Date.now()) {
+      await queue.add(
+        'open-lock',
+        { marketId: market.id, action: 'open-lock' },
+        {
+          delay: openDelay,
+          jobId: `market-open-lock:${market.id}:${today}`,
+        },
+      );
+      console.log(`[MarketLockout] Scheduled open-lock for market=${market.id} in ${Math.round(openDelay / 1000)}s`);
+    } else {
+      console.log(`[MarketLockout] Open-lock time already passed for market=${market.id}. Skipping.`);
+    }
+  }
 
-  console.log(
-    `[MarketLockout] Scheduled lockout for market=${market.id} in ${Math.round(delay / 1000)}s (at ${lockoutTime.toISOString()}).`,
-  );
+  // --- Job 2: close-lock ---
+  const closeLockTime = getLockoutTime(market.close_time);
+  const closeDelay = msUntil(closeLockTime);
+
+  if (closeDelay > 0 || closeLockTime.getTime() >= Date.now()) {
+    await queue.add(
+      'close-lock',
+      { marketId: market.id, action: 'close-lock' },
+      {
+        delay: closeDelay,
+        jobId: `market-close-lock:${market.id}:${today}`,
+      },
+    );
+    console.log(`[MarketLockout] Scheduled close-lock for market=${market.id} in ${Math.round(closeDelay / 1000)}s`);
+  } else {
+    console.log(`[MarketLockout] Close-lock time already passed for market=${market.id}. Skipping.`);
+  }
 }
 
 // ---------------------------------------------------------------------------
 // scheduleAllMarketLockouts
 // ---------------------------------------------------------------------------
 
-/**
- * Fetch all active markets and schedule lockout jobs for each.
- * Call this on server startup.
- */
 export async function scheduleAllMarketLockouts(): Promise<void> {
   const markets = await prisma.market.findMany({
     where: { is_active: true },
+    select: { id: true, open_result_time: true, close_time: true, result_time: true, is_active: true },
   });
 
   console.log(`[MarketLockout] Scheduling lockouts for ${markets.length} active markets.`);
@@ -122,6 +116,8 @@ export async function scheduleAllMarketLockouts(): Promise<void> {
   for (const market of markets) {
     await scheduleMarketLockout({
       id: market.id,
+      open_result_time: market.open_result_time,
+      close_time: market.close_time,
       result_time: market.result_time,
       is_active: market.is_active,
     });
@@ -129,62 +125,84 @@ export async function scheduleAllMarketLockouts(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// processMarketLockout
+// processOpenSessionLock
 // ---------------------------------------------------------------------------
 
-/**
- * Core lockout logic: set market status to 'locked' and publish event.
- * After result_time passes, market becomes 'closed' for the day.
- * Exported for testability.
- */
-export async function processMarketLockout(marketId: string): Promise<void> {
-  const market = await prisma.market.findUnique({
-    where: { id: marketId },
-  });
+export async function processOpenSessionLock(marketId: string): Promise<void> {
+  const market = await prisma.market.findUnique({ where: { id: marketId } });
 
   if (!market) {
     console.error(`[MarketLockout] Market ${marketId} not found.`);
     return;
   }
 
-  const lockoutTime = getLockoutTime(market.result_time);
+  const openLockTime = getOpenLockoutTime(market.open_result_time);
   const now = new Date();
 
-  if (now < lockoutTime) {
-    console.log(`[MarketLockout] Job fired early for market=${marketId}. Skipping.`);
+  if (now < openLockTime) {
+    console.log(`[MarketLockout] Open-lock job fired early for market=${marketId}. Skipping.`);
     return;
   }
 
-  // Set market status to 'locked' (betting closed)
+  await prisma.market.update({
+    where: { id: marketId },
+    data: { open_session_locked: true },
+  });
+
+  console.log(`[MarketLockout] Market ${marketId} open session LOCKED at ${now.toISOString()}.`);
+
+  await redis.publish(`market:${marketId}`, JSON.stringify({
+    event: 'market:open-locked',
+    marketId,
+    lockedAt: now.toISOString(),
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// processCloseSessionLock (was: processMarketLockout)
+// ---------------------------------------------------------------------------
+
+export async function processCloseSessionLock(marketId: string): Promise<void> {
+  const market = await prisma.market.findUnique({ where: { id: marketId } });
+
+  if (!market) {
+    console.error(`[MarketLockout] Market ${marketId} not found.`);
+    return;
+  }
+
+  // FIX: use close_time (not result_time) for the guard
+  const closeLockTime = getLockoutTime(market.close_time);
+  const now = new Date();
+
+  if (now < closeLockTime) {
+    console.log(`[MarketLockout] Close-lock job fired early for market=${marketId}. Skipping.`);
+    return;
+  }
+
   await prisma.market.update({
     where: { id: marketId },
     data: { status: 'locked' },
   });
 
-  console.log(`[MarketLockout] Market ${marketId} locked at ${now.toISOString()}.`);
+  console.log(`[MarketLockout] Market ${marketId} close session LOCKED at ${now.toISOString()}.`);
 
-  // Publish market:locked event
-  const channel = `market:${marketId}`;
-  const payload = JSON.stringify({
+  await redis.publish(`market:${marketId}`, JSON.stringify({
     event: 'market:locked',
     marketId,
     lockedAt: now.toISOString(),
-  });
-  await redis.publish(channel, payload);
+  }));
 
-  // Schedule market close after result_time
-  // After result is declared, market should be 'closed' for the day
+  // Schedule market close after result_time + 1 min
   const [rh, rm] = market.result_time.split(':').map(Number);
   const resultTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), rh, rm, 0);
   const msUntilResult = Math.max(0, resultTime.getTime() - now.getTime());
 
-  // Add a delayed job to close the market after result time
   const queue = getMarketLockoutQueue();
   await queue.add(
     'close',
     { marketId, action: 'close' },
     {
-      delay: msUntilResult + 60000, // 1 min after result time
+      delay: msUntilResult + 60000,
       jobId: `market-close:${marketId}:${resultTime.toISOString().slice(0, 10)}`,
     },
   );
@@ -199,15 +217,18 @@ export const marketLockoutWorker = createWorker<MarketLockoutJobData>(
   async (job: Job<MarketLockoutJobData>) => {
     const { marketId, action } = job.data;
 
-    if (action === 'close') {
-      // Close market for the day — stays closed until midnight reset
+    if (action === 'open-lock') {
+      console.log(`[MarketLockout] Processing open-lock job ${job.id} for market=${marketId}`);
+      await processOpenSessionLock(marketId);
+    } else if (action === 'close-lock') {
+      console.log(`[MarketLockout] Processing close-lock job ${job.id} for market=${marketId}`);
+      await processCloseSessionLock(marketId);
+    } else if (action === 'close') {
       await prisma.market.update({
         where: { id: marketId },
         data: { status: 'closed' },
       });
       console.log(`[MarketLockout] Market ${marketId} CLOSED for today.`);
-
-      // Publish market:closed event
       await redis.publish(`market:${marketId}`, JSON.stringify({
         event: 'market:closed',
         marketId,
@@ -215,9 +236,9 @@ export const marketLockoutWorker = createWorker<MarketLockoutJobData>(
         message: 'Market closed for today. Reopens tomorrow.',
       }));
     } else {
-      // Default: lock market (betting closed)
-      console.log(`[MarketLockout] Processing lockout job ${job.id} for market=${marketId}`);
-      await processMarketLockout(marketId);
+      // Legacy fallback for old 'lockout' jobs still in queue
+      console.log(`[MarketLockout] Processing legacy lockout job ${job.id} for market=${marketId}`);
+      await processCloseSessionLock(marketId);
     }
   },
 );

@@ -15,36 +15,34 @@ import { BetType, DEFAULT_WINNING_MULTIPLIERS } from '../src/types/index.js';
 const prisma = new PrismaClient();
 
 // ---------------------------------------------------------------------------
-// All standard Matka markets with accurate timings (DPBoss standard)
+// All standard Matka markets — DPBoss exact timings
+// Lockout = result_time − 20 minutes (handled by marketLockout worker)
 // ---------------------------------------------------------------------------
 
 const STANDARD_MARKETS = [
-  // Morning markets
-  { name: 'Sridevi Morning',    open_time: '09:30', close_time: '10:30', result_time: '10:35' },
-  { name: 'Rudraksh Morning',   open_time: '10:10', close_time: '11:10', result_time: '11:15' },
-  { name: 'Karnataka Day',      open_time: '10:05', close_time: '11:05', result_time: '11:10' },
-  { name: 'Milan Morning',      open_time: '10:30', close_time: '11:30', result_time: '11:35' },
-  { name: 'Kalyan Morning',     open_time: '10:45', close_time: '11:45', result_time: '11:50' },
-  { name: 'Time Bazar Morning', open_time: '10:00', close_time: '11:00', result_time: '11:05' },
-  // Day markets
-  { name: 'Sridevi',            open_time: '11:30', close_time: '12:30', result_time: '12:35' },
-  { name: 'Madhur Morning',     open_time: '11:00', close_time: '12:00', result_time: '12:05' },
-  { name: 'Time Bazar',         open_time: '13:00', close_time: '14:00', result_time: '14:05' },
-  { name: 'Madhur Day',         open_time: '13:30', close_time: '15:00', result_time: '15:05' },
-  { name: 'Rudraksh Day',       open_time: '13:00', close_time: '14:30', result_time: '14:35' },
-  { name: 'Rajdhani Day',       open_time: '15:00', close_time: '17:00', result_time: '17:05' },
-  { name: 'Milan Day',          open_time: '15:00', close_time: '17:00', result_time: '17:05' },
-  { name: 'Supreme Day',        open_time: '14:00', close_time: '16:00', result_time: '16:05' },
-  { name: 'Kalyan',             open_time: '15:45', close_time: '17:45', result_time: '17:50' },
-  // Evening/Night markets
-  { name: 'Karnataka Night',    open_time: '18:00', close_time: '19:30', result_time: '19:35' },
-  { name: 'Sridevi Night',      open_time: '18:30', close_time: '20:00', result_time: '20:05' },
-  { name: 'Rudraksh Night',     open_time: '19:00', close_time: '20:30', result_time: '20:35' },
-  { name: 'Madhur Night',       open_time: '20:30', close_time: '22:00', result_time: '22:05' },
-  { name: 'Supreme Night',      open_time: '20:00', close_time: '22:00', result_time: '22:05' },
-  { name: 'Milan Night',        open_time: '21:00', close_time: '23:00', result_time: '23:05' },
-  { name: 'Kalyan Night',       open_time: '21:30', close_time: '23:30', result_time: '23:35' },
-  { name: 'Rajdhani Night',     open_time: '21:30', close_time: '23:30', result_time: '23:35' },
+  // ── MORNING MARKETS ──────────────────────────────────────────────────────
+  { name: 'Sridevi Morning',    open_time: '09:15', close_time: '10:15', result_time: '10:30' },
+  { name: 'Time Bazar Morning', open_time: '09:45', close_time: '10:45', result_time: '11:00' },
+  { name: 'Milan Morning',      open_time: '09:00', close_time: '10:00', result_time: '11:00' },
+  { name: 'Madhur Morning',     open_time: '10:30', close_time: '11:30', result_time: '12:00' },
+  { name: 'Kalyan Morning',     open_time: '10:45', close_time: '11:45', result_time: '12:00' },
+
+  // ── DAY MARKETS ──────────────────────────────────────────────────────────
+  { name: 'Sridevi',            open_time: '11:35', close_time: '12:35', result_time: '12:35' },
+  { name: 'Time Bazar',         open_time: '13:00', close_time: '14:00', result_time: '14:00' },
+  { name: 'Madhur Day',         open_time: '13:30', close_time: '14:30', result_time: '14:30' },
+  { name: 'Milan Day',          open_time: '15:10', close_time: '17:10', result_time: '17:10' },
+  { name: 'Rajdhani Day',       open_time: '15:30', close_time: '17:30', result_time: '17:30' },
+  { name: 'Supreme Day',        open_time: '14:00', close_time: '16:00', result_time: '16:00' },
+  { name: 'Kalyan',             open_time: '16:00', close_time: '18:00', result_time: '18:00' },
+
+  // ── NIGHT MARKETS ────────────────────────────────────────────────────────
+  { name: 'Sridevi Night',      open_time: '18:30', close_time: '20:00', result_time: '20:00' },
+  { name: 'Madhur Night',       open_time: '20:30', close_time: '22:00', result_time: '22:00' },
+  { name: 'Supreme Night',      open_time: '20:00', close_time: '22:00', result_time: '22:00' },
+  { name: 'Milan Night',        open_time: '21:00', close_time: '23:00', result_time: '23:00' },
+  { name: 'Rajdhani Night',     open_time: '21:30', close_time: '23:30', result_time: '23:30' },
+  { name: 'Kalyan Night',       open_time: '21:30', close_time: '23:30', result_time: '23:30' },
   { name: 'Main Bazar',         open_time: '21:00', close_time: '23:30', result_time: '23:40' },
 ] as const;
 
@@ -96,9 +94,9 @@ async function main(): Promise<void> {
     console.log(`ℹ️  PlatformConfig already exists (id: ${existingConfig.id}), skipping.`);
   }
 
-  // 3. Create all 11 standard Matka markets
+  // 3. Upsert all standard Matka markets (create new + update timings of existing)
   let marketsCreated = 0;
-  let marketsSkipped = 0;
+  let marketsUpdated = 0;
 
   for (const market of STANDARD_MARKETS) {
     const existing = await prisma.market.findUnique({ where: { name: market.name } });
@@ -114,13 +112,32 @@ async function main(): Promise<void> {
           is_active: true,
         },
       });
+      console.log(`  ✅ Created: ${market.name}`);
       marketsCreated++;
     } else {
-      marketsSkipped++;
+      // Update timings even if market already exists
+      await prisma.market.update({
+        where: { name: market.name },
+        data: {
+          open_time: market.open_time,
+          close_time: market.close_time,
+          result_time: market.result_time,
+          is_active: true,
+        },
+      });
+      console.log(`  🔄 Updated: ${market.name}`);
+      marketsUpdated++;
     }
   }
 
-  console.log(`✅ Markets: ${marketsCreated} created, ${marketsSkipped} already existed.`);
+  // Deactivate markets not in the standard list (old/removed markets)
+  const standardNames = STANDARD_MARKETS.map(m => m.name);
+  const deactivated = await prisma.market.updateMany({
+    where: { name: { notIn: standardNames } },
+    data: { is_active: false },
+  });
+
+  console.log(`✅ Markets: ${marketsCreated} created, ${marketsUpdated} updated, ${deactivated.count} deactivated.`);
   console.log('🎉 Seed completed successfully.');
 }
 

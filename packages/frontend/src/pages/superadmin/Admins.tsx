@@ -2,7 +2,7 @@
  * SuperAdmin admin management page — /superadmin/admins
  *
  * Lists all admins. Create admin form. Activate/deactivate toggle.
- * Reset password. Delete admin.
+ * Reset password. Delete admin. Allocate points to admin.
  */
 import React, { useEffect, useState } from 'react';
 import api from '../../utils/api.js';
@@ -19,9 +19,26 @@ interface Admin {
   created_at: string;
 }
 
-interface AdminsResponse {
-  data: { admins: Admin[] };
+interface AdminBalance {
+  id: string;
+  username: string;
+  allocated_points: number;
+  used_points: number;
+  available_points: number;
 }
+
+interface AllocationRecord {
+  id: string;
+  admin_id: string;
+  admin_username: string;
+  amount: number;
+  note: string | null;
+  created_at: string;
+}
+
+interface AdminsResponse { data: { admins: Admin[] }; }
+interface AdminBalancesResponse { data: { admins: AdminBalance[] }; }
+interface PointHistoryResponse { data: { allocations: AllocationRecord[] }; }
 
 export default function SuperAdminAdmins(): React.ReactElement {
   const [admins, setAdmins] = useState<Admin[]>([]);
@@ -45,6 +62,19 @@ export default function SuperAdminAdmins(): React.ReactElement {
   // Delete confirm
   const [deleteAdmin, setDeleteAdmin] = useState<Admin | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Allocate points
+  const [allocateAdmin, setAllocateAdmin] = useState<Admin | null>(null);
+  const [allocateAmount, setAllocateAmount] = useState('');
+  const [allocateNote, setAllocateNote] = useState('');
+  const [allocateLoading, setAllocateLoading] = useState(false);
+  const [allocateError, setAllocateError] = useState<string | null>(null);
+
+  // Point history
+  const [showPointHistory, setShowPointHistory] = useState(false);
+  const [pointHistory, setPointHistory] = useState<AllocationRecord[]>([]);
+  const [adminBalances, setAdminBalances] = useState<AdminBalance[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   function fetchAdmins(): void {
     api
@@ -128,18 +158,58 @@ export default function SuperAdminAdmins(): React.ReactElement {
     }
   }
 
+  async function handleAllocatePoints(): Promise<void> {
+    if (!allocateAdmin) return;
+    const amount = parseInt(allocateAmount);
+    if (!amount || amount <= 0) { setAllocateError('Enter a valid amount.'); return; }
+    setAllocateLoading(true);
+    try {
+      await api.post(`/superadmin/admins/${allocateAdmin.id}/allocate-points`, { amount, note: allocateNote || undefined });
+      setSuccessMsg(`✅ ${amount} points allocated to ${allocateAdmin.username}`);
+      setAllocateAdmin(null);
+      setAllocateAmount('');
+      setAllocateNote('');
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: { message?: string } } } };
+      setAllocateError(axiosErr.response?.data?.error?.message ?? 'Failed to allocate points.');
+    } finally {
+      setAllocateLoading(false);
+    }
+  }
+
+  function openPointHistory(): void {
+    setShowPointHistory(true);
+    setHistoryLoading(true);
+    Promise.all([
+      api.get<PointHistoryResponse>('/superadmin/admin-point-history'),
+      api.get<AdminBalancesResponse>('/superadmin/admin-balances'),
+    ]).then(([histRes, balRes]) => {
+      setPointHistory(histRes.data.data.allocations);
+      setAdminBalances(balRes.data.data.admins);
+    }).catch(() => setError('Failed to load point history.'))
+      .finally(() => setHistoryLoading(false));
+  }
+
   if (loading) return <LoadingSpinner />;
 
   return (
     <div className="px-4 py-6 max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Admins</h1>
-        <button
-          onClick={() => setShowCreate((v) => !v)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors min-h-[44px]"
-        >
-          {showCreate ? 'Cancel' : '+ New Admin'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={openPointHistory}
+            className="bg-purple-100 hover:bg-purple-200 text-purple-700 text-sm font-medium rounded-lg px-3 py-2 transition-colors min-h-[44px]"
+          >
+            💰 Point History
+          </button>
+          <button
+            onClick={() => setShowCreate((v) => !v)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors min-h-[44px]"
+          >
+            {showCreate ? 'Cancel' : '+ New Admin'}
+          </button>
+        </div>
       </div>
 
       {error && <div className="mb-4"><ErrorBanner message={error} onDismiss={() => setError(null)} /></div>}
@@ -206,6 +276,11 @@ export default function SuperAdminAdmins(): React.ReactElement {
             {/* Action buttons */}
             <div className="flex gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
               <button
+                onClick={() => { setAllocateAdmin(admin); setAllocateAmount(''); setAllocateNote(''); setAllocateError(null); }}
+                className="flex-1 bg-green-50 hover:bg-green-100 text-green-700 text-xs font-bold rounded-lg py-2 px-3 transition-colors">
+                💰 Allocate Points
+              </button>
+              <button
                 onClick={() => { setResetAdmin(admin); setResetPassword(''); setResetError(null); }}
                 className="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-lg py-2 px-3 transition-colors">
                 🔑 Reset Password
@@ -214,7 +289,7 @@ export default function SuperAdminAdmins(): React.ReactElement {
                 <button
                   onClick={() => setDeleteAdmin(admin)}
                   className="flex-1 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg py-2 px-3 transition-colors">
-                  🗑️ Delete Admin
+                  🗑️ Delete
                 </button>
               )}
             </div>
@@ -267,6 +342,132 @@ export default function SuperAdminAdmins(): React.ReactElement {
                 {deleteLoading ? 'Deleting…' : 'Delete'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Allocate Points Modal */}
+      {allocateAdmin && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Allocate Points</h2>
+              <button onClick={() => setAllocateAdmin(null)} className="text-gray-400 hover:text-gray-600 text-xl min-h-[44px] min-w-[44px] flex items-center justify-center">✕</button>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Allocating points to admin: <span className="font-semibold text-indigo-600">{allocateAdmin.username}</span>
+            </p>
+            {allocateError && <div className="mb-3"><ErrorBanner message={allocateError} onDismiss={() => setAllocateError(null)} /></div>}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Amount (Points)</label>
+                <input
+                  type="number"
+                  value={allocateAmount}
+                  onChange={(e) => setAllocateAmount(e.target.value)}
+                  placeholder="e.g. 10000"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  min="1"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Note (Optional)</label>
+                <input
+                  type="text"
+                  value={allocateNote}
+                  onChange={(e) => setAllocateNote(e.target.value)}
+                  placeholder="e.g. Monthly allocation"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setAllocateAdmin(null)}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg py-2 text-sm">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => void handleAllocatePoints()}
+                  disabled={allocateLoading}
+                  className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-semibold rounded-lg py-2 text-sm transition-colors">
+                  {allocateLoading ? 'Allocating...' : 'Allocate Points'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Point History Modal */}
+      {showPointHistory && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-2xl max-h-[85vh] flex flex-col shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Point Allocation History</h2>
+              <button onClick={() => setShowPointHistory(false)} className="text-gray-400 hover:text-gray-600 text-xl min-h-[44px] min-w-[44px] flex items-center justify-center">✕</button>
+            </div>
+
+            {historyLoading ? <LoadingSpinner /> : (
+              <>
+                {/* Admin balances summary */}
+                {adminBalances.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Admin Balances</p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-xs text-gray-500 border-b border-gray-200">
+                            <th className="pb-2">Admin</th>
+                            <th className="pb-2 text-right">Allocated</th>
+                            <th className="pb-2 text-right">Used</th>
+                            <th className="pb-2 text-right">Available</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {adminBalances.map((a) => (
+                            <tr key={a.id} className="border-b border-gray-100 last:border-0">
+                              <td className="py-1.5 font-medium text-gray-900 dark:text-gray-100">{a.username}</td>
+                              <td className="py-1.5 text-right text-blue-600 font-semibold">{Number(a.allocated_points).toLocaleString()}</td>
+                              <td className="py-1.5 text-right text-orange-600">{Number(a.used_points).toLocaleString()}</td>
+                              <td className="py-1.5 text-right text-green-600 font-bold">{Number(a.available_points).toLocaleString()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Allocation history */}
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Allocation History</p>
+                <div className="overflow-y-auto flex-1">
+                  {pointHistory.length === 0 ? (
+                    <p className="text-center text-gray-500 py-8">No allocations yet.</p>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-white dark:bg-gray-800">
+                        <tr className="text-left text-xs text-gray-500 border-b border-gray-200">
+                          <th className="pb-2">Admin</th>
+                          <th className="pb-2 text-right">Amount</th>
+                          <th className="pb-2">Note</th>
+                          <th className="pb-2 text-right">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pointHistory.map((a) => (
+                          <tr key={a.id} className="border-b border-gray-100 last:border-0">
+                            <td className="py-2 font-medium text-gray-900 dark:text-gray-100">{a.admin_username}</td>
+                            <td className="py-2 text-right font-bold text-green-600">+{Number(a.amount).toLocaleString()}</td>
+                            <td className="py-2 text-xs text-gray-400">{a.note ?? '-'}</td>
+                            <td className="py-2 text-right text-xs text-gray-400">{new Date(a.created_at).toLocaleDateString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

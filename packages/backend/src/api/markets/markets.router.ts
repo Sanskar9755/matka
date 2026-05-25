@@ -41,14 +41,15 @@ router.post(
   requireRole(Role.SuperAdmin),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { name, open_time, close_time, result_time } = req.body as {
+      const { name, open_time, close_time, result_time, open_result_time } = req.body as {
         name: string;
         open_time: string;
         close_time: string;
         result_time: string;
+        open_result_time?: string;
       };
 
-      const result = await marketsService.createMarket({ name, open_time, close_time, result_time });
+      const result = await marketsService.createMarket({ name, open_time, close_time, result_time, open_result_time });
       res.status(201).json({ data: result });
     } catch (err) {
       next(err);
@@ -66,14 +67,15 @@ router.put(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params as { id: string };
-      const { name, open_time, close_time, result_time } = req.body as {
+      const { name, open_time, close_time, result_time, open_result_time } = req.body as {
         name?: string;
         open_time?: string;
         close_time?: string;
         result_time?: string;
+        open_result_time?: string;
       };
 
-      const result = await marketsService.updateMarket(id, { name, open_time, close_time, result_time });
+      const result = await marketsService.updateMarket(id, { name, open_time, close_time, result_time, open_result_time });
       res.status(200).json({ data: result });
     } catch (err) {
       next(err);

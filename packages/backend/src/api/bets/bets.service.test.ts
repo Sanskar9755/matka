@@ -49,16 +49,18 @@ function makeMarket(overrides: Partial<{
   result_time: string;
   status: string;
   is_active: boolean;
+  open_session_locked: boolean;
   updated_at: Date;
 }> = {}) {
   return {
     id: 'market-uuid-1',
     name: 'Test Market',
-    open_time: '09:00',
+    open_time: '12:00',
     close_time: '21:00',
     result_time: '21:30',
     status: 'open',
     is_active: true,
+    open_session_locked: false,
     updated_at: new Date(),
     ...overrides,
   };
@@ -171,18 +173,70 @@ describe('placeBet', () => {
     ).rejects.toThrow(expect.objectContaining({ code: 'MARKET_LOCKED' }));
   });
 
-  it('throws MARKET_LOCKED when current time >= result_time - 20 min', async () => {
-    // Market: result=21:30, lockout=21:10
-    // Mock current time to 21:10 (exactly at lockout)
-    vi.setSystemTime(new Date(2024, 0, 1, 21, 10, 0, 0));
-
+  it('throws MARKET_LOCKED for open-session bet when open_session_locked = true', async () => {
     vi.mocked(prisma.market.findUnique).mockResolvedValue(
-      makeMarket({ result_time: '21:30', status: 'open' }),
+      makeMarket({ open_session_locked: true, status: 'open' }),
     );
 
     await expect(
-      placeBet('user-uuid-1', 'market-uuid-1', BetType.Single, '5', 100),
+      placeBet('user-uuid-1', 'market-uuid-1', BetType.Single, '5', 100, 'open'),
     ).rejects.toThrow(expect.objectContaining({ code: 'MARKET_LOCKED' }));
+  });
+
+  it('throws MARKET_LOCKED for open-session bet dynamically when time is past lockout, even if open_session_locked = false', async () => {
+    vi.mocked(prisma.market.findUnique).mockResolvedValue(
+      makeMarket({ open_session_locked: false, open_time: '10:10', open_result_time: '10:10', status: 'open' }),
+    );
+
+    // Lockout is 10:10 - 20 min = 09:50. Mocked time is 10:00 (which is past lockout).
+    await expect(
+      placeBet('user-uuid-1', 'market-uuid-1', BetType.Single, '5', 100, 'open'),
+    ).rejects.toThrow(expect.objectContaining({ code: 'MARKET_LOCKED' }));
+  });
+
+  it('accepts close-session bet when open_session_locked = true but status = open', async () => {
+    vi.mocked(prisma.market.findUnique).mockResolvedValue(
+      makeMarket({ open_session_locked: true, status: 'open' }),
+    );
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(makeUser());
+    vi.mocked(prisma.resultCycle.upsert).mockResolvedValue(makeResultCycle());
+    vi.mocked(prisma.wallet.findUnique).mockResolvedValue(makeWallet());
+
+    const mockBet = { ...makeBet(), bet_type: 'jodi', selection: '36' };
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+      const txMock = {
+        wallet: { update: vi.fn().mockResolvedValue({}) },
+        bet: { create: vi.fn().mockResolvedValue(mockBet) },
+      };
+      return fn(txMock as unknown as typeof prisma);
+    });
+
+    // close-session bet should succeed even when open session is locked
+    await expect(
+      placeBet('user-uuid-1', 'market-uuid-1', BetType.Jodi, '36', 100, 'close'),
+    ).resolves.toBeDefined();
+  });
+
+  it('accepts open-session bet when open_session_locked = false and status = open', async () => {
+    vi.mocked(prisma.market.findUnique).mockResolvedValue(
+      makeMarket({ open_session_locked: false, status: 'open' }),
+    );
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(makeUser());
+    vi.mocked(prisma.resultCycle.upsert).mockResolvedValue(makeResultCycle());
+    vi.mocked(prisma.wallet.findUnique).mockResolvedValue(makeWallet());
+
+    const mockBet = makeBet();
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+      const txMock = {
+        wallet: { update: vi.fn().mockResolvedValue({}) },
+        bet: { create: vi.fn().mockResolvedValue(mockBet) },
+      };
+      return fn(txMock as unknown as typeof prisma);
+    });
+
+    await expect(
+      placeBet('user-uuid-1', 'market-uuid-1', BetType.Single, '5', 100, 'open'),
+    ).resolves.toBeDefined();
   });
 
   // -------------------------------------------------------------------------

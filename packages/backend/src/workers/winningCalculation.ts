@@ -26,24 +26,6 @@ export interface WinningCalculationJobData {
 }
 
 // ---------------------------------------------------------------------------
-// Hash helper for advisory lock
-// ---------------------------------------------------------------------------
-
-/**
- * Produce a 32-bit integer hash from a string for use as a PostgreSQL
- * advisory lock key. Uses a simple djb2-style hash.
- */
-function hashString(str: string): number {
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
-    hash = hash >>> 0; // keep as unsigned 32-bit
-  }
-  // Convert to signed 32-bit integer for pg_try_advisory_xact_lock
-  return hash | 0;
-}
-
-// ---------------------------------------------------------------------------
 // processWinningCalculation
 // ---------------------------------------------------------------------------
 
@@ -55,37 +37,35 @@ export async function processWinningCalculation(
   marketId: string,
   resultCycleId: string,
 ): Promise<{ processed: boolean; winCount: number; lossCount: number }> {
+  // 1. Check calculation_done flag BEFORE transaction (fast idempotency check)
+  const preCheck = await prisma.resultCycle.findUnique({
+    where: { id: resultCycleId },
+    select: { calculation_done: true },
+  });
+
+  if (!preCheck) {
+    console.error(`[WinningCalculation] ResultCycle ${resultCycleId} not found.`);
+    return { processed: false, winCount: 0, lossCount: 0 };
+  }
+
+  if (preCheck.calculation_done) {
+    console.log(`[WinningCalculation] Already done for cycle=${resultCycleId}. Skipping.`);
+    return { processed: false, winCount: 0, lossCount: 0 };
+  }
+
   return await prisma.$transaction(async (tx) => {
-    // 1. Acquire PostgreSQL advisory lock
-    const lockKey1 = hashString(marketId);
-    const lockKey2 = hashString(resultCycleId);
-
-    const lockResult = await tx.$queryRaw<[{ pg_try_advisory_xact_lock: boolean }]>`
-      SELECT pg_try_advisory_xact_lock(${lockKey1}::bigint, ${lockKey2}::bigint)
-    `;
-
-    const lockAcquired = lockResult[0]?.pg_try_advisory_xact_lock;
-    if (!lockAcquired) {
-      console.log(
-        `[WinningCalculation] Could not acquire advisory lock for market=${marketId}, cycle=${resultCycleId}. Skipping.`,
-      );
-      return { processed: false, winCount: 0, lossCount: 0 };
-    }
-
-    // 2. Check calculation_done flag (idempotency guard)
+    // 2. Re-check inside transaction to prevent race conditions
     const resultCycle = await tx.resultCycle.findUnique({
       where: { id: resultCycleId },
     });
 
     if (!resultCycle) {
-      console.error(`[WinningCalculation] ResultCycle ${resultCycleId} not found.`);
+      console.error(`[WinningCalculation] ResultCycle ${resultCycleId} not found inside tx.`);
       return { processed: false, winCount: 0, lossCount: 0 };
     }
 
     if (resultCycle.calculation_done) {
-      console.log(
-        `[WinningCalculation] Calculation already done for cycle=${resultCycleId}. Skipping (idempotency).`,
-      );
+      console.log(`[WinningCalculation] Already done (race check) for cycle=${resultCycleId}. Skipping.`);
       return { processed: false, winCount: 0, lossCount: 0 };
     }
 

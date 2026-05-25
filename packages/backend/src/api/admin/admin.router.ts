@@ -175,4 +175,38 @@ router.put(
   },
 );
 
+// ---------------------------------------------------------------------------
+// POST /api/admin/users/:id/credit-points — Credit points to a user
+// ---------------------------------------------------------------------------
+router.post(
+  '/users/:id/credit-points',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminId = req.user!.userId;
+      const { id } = req.params as { id: string };
+      const { amount, note } = req.body as { amount: number; note?: string };
+      const result = await adminService.creditUserPoints(adminId, id, amount, note);
+      res.status(200).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/point-credits — Get admin's point credit history
+// ---------------------------------------------------------------------------
+router.get(
+  '/point-credits',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminId = req.user!.userId;
+      const result = await adminService.getAdminPointCreditHistory(adminId);
+      res.status(200).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 export default router;

@@ -31,7 +31,7 @@ export async function performDailyReset(): Promise<void> {
   // Reset all active markets to 'open'
   const result = await prisma.market.updateMany({
     where: { is_active: true },
-    data: { status: 'open' },
+    data: { status: 'open', open_session_locked: false },
   });
 
   console.log(`[DailyReset] Reset ${result.count} markets to 'open' status.`);

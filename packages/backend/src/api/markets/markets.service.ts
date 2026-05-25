@@ -3,6 +3,12 @@
  *
  * Handles market creation, updates, status management, and listing with
  * computed time-based status.
+ *
+ * Phase system:
+ *   - open_result_time  = when open session result declares (open bets lock 20 min before)
+ *   - result_time       = when close session result declares (full market locks 20 min before)
+ *   - After result_time + 5 min → market 'closed' for the day
+ *   - Midnight reset → all markets back to 'open'
  */
 
 import prisma from '../../lib/prisma.js';
@@ -18,15 +24,15 @@ export interface CreateMarketData {
   open_time: string;
   close_time: string;
   result_time: string;
+  open_result_time?: string;
 }
 
 export interface CreateMarketResult {
-  market: Market;
+  market: Market & { open_result_time: string };
 }
 
 /**
  * Create a new market.
- * Status defaults to 'open', is_active defaults to true.
  */
 export async function createMarket(data: CreateMarketData): Promise<CreateMarketResult> {
   const market = await prisma.market.create({
@@ -35,6 +41,7 @@ export async function createMarket(data: CreateMarketData): Promise<CreateMarket
       open_time: data.open_time,
       close_time: data.close_time,
       result_time: data.result_time,
+      open_result_time: data.open_result_time ?? '',
       status: MarketStatus.Open,
       is_active: true,
     },
@@ -47,6 +54,7 @@ export async function createMarket(data: CreateMarketData): Promise<CreateMarket
       open_time: market.open_time,
       close_time: market.close_time,
       result_time: market.result_time,
+      open_result_time: market.open_result_time,
       status: market.status as MarketStatus,
       is_active: market.is_active,
       updated_at: market.updated_at,
@@ -63,10 +71,11 @@ export interface UpdateMarketData {
   open_time?: string;
   close_time?: string;
   result_time?: string;
+  open_result_time?: string;
 }
 
 export interface UpdateMarketResult {
-  market: Market;
+  market: Market & { open_result_time: string };
 }
 
 /**
@@ -80,6 +89,7 @@ export async function updateMarket(id: string, data: UpdateMarketData): Promise<
       ...(data.open_time !== undefined && { open_time: data.open_time }),
       ...(data.close_time !== undefined && { close_time: data.close_time }),
       ...(data.result_time !== undefined && { result_time: data.result_time }),
+      ...(data.open_result_time !== undefined && { open_result_time: data.open_result_time }),
     },
   });
 
@@ -90,6 +100,7 @@ export async function updateMarket(id: string, data: UpdateMarketData): Promise<
       open_time: market.open_time,
       close_time: market.close_time,
       result_time: market.result_time,
+      open_result_time: market.open_result_time,
       status: market.status as MarketStatus,
       is_active: market.is_active,
       updated_at: market.updated_at,
@@ -106,7 +117,7 @@ export interface SetMarketStatusResult {
 }
 
 /**
- * Update market status (activate/deactivate).
+ * Update market status.
  */
 export async function setMarketStatus(id: string, status: MarketStatus): Promise<SetMarketStatusResult> {
   const market = await prisma.market.update({
@@ -133,9 +144,11 @@ export async function setMarketStatus(id: string, status: MarketStatus): Promise
 // ---------------------------------------------------------------------------
 
 export interface MarketWithComputedStatus extends Market {
+  open_result_time: string;
   computed_status: MarketStatus;
+  open_session_locked: boolean; // true = open bets no longer accepted
   mins_until_lockout: number;
-  is_open_yet: boolean;        // false = not yet open time, but will open today
+  is_open_yet: boolean;
 }
 
 export interface ListActiveMarketsResult {
@@ -146,6 +159,7 @@ export interface ListActiveMarketsResult {
  * Parse time string (HH:MM) to minutes since midnight.
  */
 function parseTimeToMinutes(timeStr: string): number {
+  if (!timeStr) return 9999;
   const [hours, minutes] = timeStr.split(':').map(Number);
   return hours * 60 + minutes;
 }
@@ -160,44 +174,31 @@ function getCurrentTimeInMinutes(): number {
 
 /**
  * Weekly off days for each market (0=Sunday, 6=Saturday).
- * Markets not listed here run all 7 days.
  */
 const WEEKLY_OFF: Record<string, number[]> = {
-  'Main Bazar':         [0, 6], // Sunday + Saturday
-  'Milan Day':          [0],    // Sunday
-  'Milan Night':        [0],    // Sunday
-  'Milan Morning':      [0],    // Sunday
-  'Rajdhani Day':       [0],    // Sunday
-  'Rajdhani Night':     [0],    // Sunday
-  'Time Bazar':         [0],    // Sunday
-  'Time Bazar Morning': [0],    // Sunday
-  'Madhur Day':         [0],    // Sunday
-  'Madhur Night':       [0],    // Sunday
-  'Madhur Morning':     [0],    // Sunday
-  'Kalyan':             [0],    // Sunday
-  'Kalyan Morning':     [0],    // Sunday
-  'Kalyan Night':       [0],    // Sunday
-  'Sridevi':            [0],    // Sunday
-  'Sridevi Morning':    [0],    // Sunday
-  'Sridevi Night':      [0],    // Sunday
-  'Supreme Day':        [0],    // Sunday
-  'Supreme Night':      [0],    // Sunday
+  'Main Bazar':         [0, 6],
+  'Milan Day':          [0], 'Milan Night':        [0], 'Milan Morning':      [0],
+  'Rajdhani Day':       [0], 'Rajdhani Night':     [0],
+  'Time Bazar':         [0], 'Time Bazar Morning': [0],
+  'Madhur Day':         [0], 'Madhur Night':       [0], 'Madhur Morning':     [0],
+  'Kalyan':             [0], 'Kalyan Morning':     [0], 'Kalyan Night':       [0],
+  'Sridevi':            [0], 'Sridevi Morning':    [0], 'Sridevi Night':      [0],
+  'Supreme Day':        [0], 'Supreme Night':      [0],
 };
 
-/**
- * Check if a market is on weekly off today.
- */
 function isWeeklyOff(marketName: string): boolean {
-  const today = new Date().getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
-  const offDays = WEEKLY_OFF[marketName] ?? [];
-  return offDays.includes(today);
+  const today = new Date().getDay();
+  return (WEEKLY_OFF[marketName] ?? []).includes(today);
 }
 
 /**
- * Compute market status — simple time-based logic.
- * DB 'closed' = result declared, stays closed until midnight reset.
- * DB 'locked' = admin locked or auto-locked.
- * DB 'open' = check current time against open/close window.
+ * Compute market status from DB status + weekly off + time-based logic.
+ *
+ * Rules:
+ * - open_time + 20 min → open bets lock (open_session_locked = true)
+ * - close_time - 20 min → full market locks (computed_status = locked)
+ * - close_time + 5 min → market closed for the day
+ * - Midnight reset → all markets back to 'open'
  */
 export function computeMarketStatus(market: {
   status: string;
@@ -206,25 +207,52 @@ export function computeMarketStatus(market: {
   open_time: string;
   name: string;
 }): MarketStatus {
-  // Weekly off — market is closed today
   if (isWeeklyOff(market.name)) return MarketStatus.Closed;
-
   if (market.status === MarketStatus.Closed) return MarketStatus.Closed;
+
+  const currentMins = getCurrentTimeInMinutes();
+  const closeMins = parseTimeToMinutes(market.close_time);
+  const closeLockoutMins = closeMins - 20; // full lock 20 min before close_time
+
+  // Past close_time + 5 min → closed for today
+  if (currentMins > closeMins + 5) return MarketStatus.Closed;
+
+  // Within 20 min of close_time → fully locked
+  if (currentMins >= closeLockoutMins) return MarketStatus.Locked;
+
   if (market.status === MarketStatus.Locked) return MarketStatus.Locked;
   return MarketStatus.Open;
 }
 
 /**
- * Get minutes remaining until lockout (negative = already locked).
+ * Check if open session is locked.
+ * Open bets lock 20 min BEFORE open_result_time (or open_time if open_result_time is not set).
+ * Once locked, stays locked until midnight reset.
  */
-export function minutesUntilLockout(result_time: string): number {
+export function isOpenSessionLocked(market: {
+  open_session_locked: boolean;
+  open_result_time: string;
+  open_time: string;
+}): boolean {
+  if (market.open_session_locked) return true;
+  const openResultTime = market.open_result_time || market.open_time;
+  if (!openResultTime) return false;
   const currentMinutes = getCurrentTimeInMinutes();
-  const lockoutMinutes = parseTimeToMinutes(result_time) - 15;
+  const openLockMinutes = parseTimeToMinutes(openResultTime) - 20; // 20 min before open result
+  return currentMinutes >= openLockMinutes;
+}
+
+/**
+ * Get minutes remaining until close lockout (close_time - 20 min).
+ */
+export function minutesUntilLockout(close_time: string): number {
+  const currentMinutes = getCurrentTimeInMinutes();
+  const lockoutMinutes = parseTimeToMinutes(close_time) - 20;
   return lockoutMinutes - currentMinutes;
 }
 
 /**
- * List all active markets with computed current status + timing info.
+ * List all active markets with computed status + phase info.
  */
 export async function listActiveMarkets(): Promise<ListActiveMarketsResult> {
   const markets = await prisma.market.findMany({
@@ -240,8 +268,12 @@ export async function listActiveMarkets(): Promise<ListActiveMarketsResult> {
       name: market.name,
     });
 
-    const mins_until_lockout = minutesUntilLockout(market.result_time);
-    const is_open_yet = true; // No time restriction — always open if status is open
+    const open_session_locked = isOpenSessionLocked({
+      open_session_locked: market.open_session_locked,
+      open_result_time: market.open_result_time,
+      open_time: market.open_time,
+    });
+    const mins_until_lockout = minutesUntilLockout(market.close_time);
 
     return {
       id: market.id,
@@ -249,12 +281,14 @@ export async function listActiveMarkets(): Promise<ListActiveMarketsResult> {
       open_time: market.open_time,
       close_time: market.close_time,
       result_time: market.result_time,
+      open_result_time: market.open_result_time,
       status: market.status as MarketStatus,
       is_active: market.is_active,
       updated_at: market.updated_at,
       computed_status,
+      open_session_locked,
       mins_until_lockout,
-      is_open_yet,
+      is_open_yet: true,
     };
   });
 

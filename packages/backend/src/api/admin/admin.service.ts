@@ -597,3 +597,142 @@ export async function getBetAnalysis(
     summary,
   };
 }
+
+// ---------------------------------------------------------------------------
+// creditUserPoints — Admin directly adds points to a user's wallet
+// ---------------------------------------------------------------------------
+
+export interface CreditUserPointsResult {
+  success: true;
+  user_id: string;
+  amount: number;
+  admin_available_points: bigint;
+}
+
+/**
+ * Admin credits points directly to a user's wallet.
+ * Validates:
+ * 1. User belongs to this admin
+ * 2. Admin has enough available points (allocated - used)
+ */
+export async function creditUserPoints(
+  adminId: string,
+  userId: string,
+  amount: number,
+  note?: string,
+): Promise<CreditUserPointsResult> {
+  if (amount <= 0) throw new AppError('VALIDATION_ERROR');
+
+  const result = await prisma.$transaction(async (tx) => {
+    // Validate user belongs to admin
+    const user = await tx.user.findUnique({ where: { id: userId } });
+    if (!user || user.admin_id !== adminId) throw new AppError('FORBIDDEN');
+
+    // Check admin available balance
+    const admin = await tx.admin.findUnique({ where: { id: adminId } });
+    if (!admin) throw new AppError('FORBIDDEN');
+
+    const available = admin.allocated_points - admin.used_points;
+    if (available < BigInt(amount)) throw new AppError('INSUFFICIENT_ADMIN_BALANCE');
+
+    // Credit user wallet
+    const wallet = await tx.wallet.findUnique({ where: { user_id: userId } });
+    const newBalance = (wallet?.balance_points ?? BigInt(0)) + BigInt(amount);
+
+    await tx.wallet.upsert({
+      where: { user_id: userId },
+      create: { user_id: userId, balance_points: BigInt(amount), held_points: BigInt(0) },
+      update: { balance_points: { increment: BigInt(amount) } },
+    });
+
+    // Record transaction
+    await tx.transaction.create({
+      data: {
+        user_id: userId,
+        type: TransactionType.Deposit,
+        amount_points: BigInt(amount),
+        balance_after: newBalance,
+        status: TransactionStatus.Completed,
+        approved_by: adminId,
+      },
+    });
+
+    // Record in admin_user_point_credits
+    await tx.adminUserPointCredit.create({
+      data: {
+        admin_id: adminId,
+        user_id: userId,
+        amount: BigInt(amount),
+        note: note ?? null,
+      },
+    });
+
+    // Increment admin used_points
+    const updatedAdmin = await tx.admin.update({
+      where: { id: adminId },
+      data: { used_points: { increment: BigInt(amount) } },
+    });
+
+    return updatedAdmin;
+  });
+
+  return {
+    success: true,
+    user_id: userId,
+    amount,
+    admin_available_points: result.allocated_points - result.used_points,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// getAdminPointCreditHistory
+// ---------------------------------------------------------------------------
+
+export interface PointCreditRecord {
+  id: string;
+  user_id: string;
+  username: string;
+  amount: bigint;
+  note: string | null;
+  created_at: Date;
+}
+
+export interface GetAdminPointCreditHistoryResult {
+  credits: PointCreditRecord[];
+  admin_allocated: bigint;
+  admin_used: bigint;
+  admin_available: bigint;
+}
+
+/**
+ * Get history of all point credits given by this admin to users.
+ */
+export async function getAdminPointCreditHistory(
+  adminId: string,
+): Promise<GetAdminPointCreditHistoryResult> {
+  const [credits, admin] = await Promise.all([
+    prisma.adminUserPointCredit.findMany({
+      where: { admin_id: adminId },
+      include: { user: { select: { username: true } } },
+      orderBy: { created_at: 'desc' },
+    }),
+    prisma.admin.findUnique({
+      where: { id: adminId },
+      select: { allocated_points: true, used_points: true },
+    }),
+  ]);
+
+  return {
+    credits: credits.map((c) => ({
+      id: c.id,
+      user_id: c.user_id,
+      username: c.user.username,
+      amount: c.amount,
+      note: c.note,
+      created_at: c.created_at,
+    })),
+    admin_allocated: admin?.allocated_points ?? BigInt(0),
+    admin_used: admin?.used_points ?? BigInt(0),
+    admin_available: (admin?.allocated_points ?? BigInt(0)) - (admin?.used_points ?? BigInt(0)),
+  };
+}

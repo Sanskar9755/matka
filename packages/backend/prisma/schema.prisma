@@ -74,6 +74,7 @@ model User {
   wallet       Wallet?
   transactions Transaction[]
   bets         Bet[]
+  point_credits AdminUserPointCredit[]
 
   @@map("users")
 }
@@ -86,13 +87,48 @@ model Admin {
   is_active       Boolean  @default(true)
   min_bet_points  Int      @default(10)
   max_bet_points  Int      @default(10000)
+  allocated_points BigInt  @default(0) // Total points allocated by superadmin
+  used_points      BigInt  @default(0) // Points given to users by this admin
   created_at      DateTime @default(now()) @db.Timestamptz
 
   // Relations
   users                User[]
   approved_transactions Transaction[] @relation("ApprovedBy")
+  point_allocations    AdminPointAllocation[] @relation("AllocatedTo")
+  point_credits        AdminUserPointCredit[]
 
   @@map("admins")
+}
+
+model AdminPointAllocation {
+  id           String   @id @default(uuid())
+  admin_id     String
+  amount       BigInt
+  note         String?
+  created_at   DateTime @default(now()) @db.Timestamptz
+
+  // Relations
+  admin Admin @relation("AllocatedTo", fields: [admin_id], references: [id])
+
+  @@index([admin_id], name: "idx_admin_point_allocations_admin_id")
+  @@map("admin_point_allocations")
+}
+
+model AdminUserPointCredit {
+  id         String   @id @default(uuid())
+  admin_id   String
+  user_id    String
+  amount     BigInt
+  note       String?
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  // Relations
+  admin Admin @relation(fields: [admin_id], references: [id])
+  user  User  @relation(fields: [user_id], references: [id])
+
+  @@index([admin_id], name: "idx_admin_user_point_credits_admin_id")
+  @@index([user_id], name: "idx_admin_user_point_credits_user_id")
+  @@map("admin_user_point_credits")
 }
 
 model Wallet {
@@ -129,14 +165,16 @@ model Transaction {
 }
 
 model Market {
-  id          String       @id @default(uuid())
-  name        String       @unique
-  open_time   String       // HH:MM
-  close_time  String       // HH:MM
-  result_time String       // HH:MM
-  status      MarketStatus @default(open)
-  is_active   Boolean      @default(true)
-  updated_at  DateTime     @updatedAt @db.Timestamptz
+  id               String       @id @default(uuid())
+  name             String       @unique
+  open_time        String       // HH:MM — betting opens
+  close_time       String       // HH:MM — close betting opens
+  result_time      String       // HH:MM — close result time (full market closes)
+  open_result_time String       @default("") // HH:MM — open result time (open bets lock)
+  status               MarketStatus @default(open)
+  is_active            Boolean      @default(true)
+  open_session_locked  Boolean      @default(false) // true after open_result_time − 20 min
+  updated_at           DateTime     @updatedAt @db.Timestamptz
 
   // Relations
   bets          Bet[]
@@ -152,6 +190,7 @@ model Bet {
   market_id        String
   result_cycle_id  String
   bet_type         BetType
+  session          String     @default("open") // "open" or "close"
   selection        String
   points           BigInt
   outcome          BetOutcome @default(pending)

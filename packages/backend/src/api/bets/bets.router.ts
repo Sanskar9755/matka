@@ -24,14 +24,15 @@ router.post(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const userId = req.user!.userId;
-      const { marketId, betType, selection, points } = req.body as {
+      const { marketId, betType, selection, points, session } = req.body as {
         marketId: string;
         betType: BetType;
         selection: string;
         points: number;
+        session?: 'open' | 'close';
       };
 
-      const result = await betsService.placeBet(userId, marketId, betType, selection, points);
+      const result = await betsService.placeBet(userId, marketId, betType, selection, points, session ?? 'open');
       res.status(201).json({ data: result });
     } catch (err) {
       next(err);

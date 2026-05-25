@@ -10,6 +10,7 @@ import { AppError } from '../../middleware/errorHandler.js';
 import { BetType, BetOutcome, MarketStatus } from '@matka/types';
 import type { Bet } from '@matka/types';
 import { publish } from '../../realtime/pubsub.js';
+import { isOpenSessionLocked } from '../markets/markets.service.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -99,6 +100,7 @@ export async function placeBet(
   betType: BetType,
   selection: string,
   points: number,
+  session: 'open' | 'close' = 'open',
 ): Promise<PlaceBetResult> {
   // 1. Get market — if not found → throw MARKET_CLOSED
   const market = await prisma.market.findUnique({
@@ -115,6 +117,18 @@ export async function placeBet(
   }
   if (market.status === MarketStatus.Closed || !market.is_active) {
     throw new AppError('MARKET_CLOSED');
+  }
+
+  // 3. Check open session lock — set by the open-lock BullMQ job or dynamically via time
+  if (session === 'open') {
+    const isLocked = isOpenSessionLocked({
+      open_session_locked: market.open_session_locked,
+      open_result_time: market.open_result_time,
+      open_time: market.open_time,
+    });
+    if (isLocked) {
+      throw new AppError('MARKET_LOCKED');
+    }
   }
 
   // 4. Get user's admin to check bet limits
@@ -194,6 +208,7 @@ export async function placeBet(
         market_id: marketId,
         result_cycle_id: resultCycle.id,
         bet_type: betType,
+        session,
         selection,
         points: BigInt(points),
         outcome: BetOutcome.Pending,
@@ -274,6 +289,7 @@ export interface BetHistoryItem {
   id: string;
   market_name: string;
   bet_type: BetType;
+  session: string;
   selection: string;
   points: bigint;
   outcome: BetOutcome;
@@ -305,6 +321,7 @@ export async function getBetHistory(userId: string): Promise<GetBetHistoryResult
       id: bet.id,
       market_name: bet.market.name,
       bet_type: bet.bet_type as BetType,
+      session: bet.session,
       selection: bet.selection,
       points: bet.points,
       outcome: bet.outcome as BetOutcome,

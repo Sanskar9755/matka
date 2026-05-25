@@ -10,7 +10,8 @@
   "scripts": {
     "dev:backend": "npm run dev --workspace=packages/backend",
     "dev:frontend": "npm run dev --workspace=packages/frontend",
-    "build:backend": "npm run build --workspace=packages/backend",
+    "build:types": "npm run build --workspace=packages/types",
+    "build:backend": "npm run build:types && npm run build --workspace=packages/backend",
     "build:frontend": "npm run build --workspace=packages/frontend",
     "test:backend": "npm run test --workspace=packages/backend",
     "test": "npm run test:backend"

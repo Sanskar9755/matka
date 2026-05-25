@@ -223,4 +223,52 @@ router.post(
   },
 );
 
+// ---------------------------------------------------------------------------
+// POST /api/superadmin/admins/:id/allocate-points — Allocate points to admin
+// ---------------------------------------------------------------------------
+router.post(
+  '/admins/:id/allocate-points',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params as { id: string };
+      const { amount, note } = req.body as { amount: number; note?: string };
+      const result = await superadminService.allocatePointsToAdmin(id, amount, note);
+      res.status(200).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// GET /api/superadmin/admin-point-history — Get all admin point allocations
+// ---------------------------------------------------------------------------
+router.get(
+  '/admin-point-history',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { adminId } = req.query as { adminId?: string };
+      const result = await superadminService.getAdminPointHistory(adminId);
+      res.status(200).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// GET /api/superadmin/admin-balances — Get all admin point balances
+// ---------------------------------------------------------------------------
+router.get(
+  '/admin-balances',
+  async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const result = await superadminService.getAdminBalances();
+      res.status(200).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 export default router;

@@ -58,6 +58,14 @@ export const ERROR_CODES: Record<string, ErrorCodeDefinition> = {
     httpStatus: 400,
     message: 'Your wallet balance is insufficient to place this bet.',
   },
+  INSUFFICIENT_ADMIN_BALANCE: {
+    httpStatus: 400,
+    message: 'You do not have enough allocated points to credit this amount.',
+  },
+  VALIDATION_ERROR: {
+    httpStatus: 400,
+    message: 'Invalid input provided.',
+  },
   BET_BELOW_MINIMUM: {
     httpStatus: 400,
     message: 'Bet amount is below the minimum allowed.',

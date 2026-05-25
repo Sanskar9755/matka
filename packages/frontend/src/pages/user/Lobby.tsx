@@ -23,27 +23,27 @@ function to12hr(time: string): string {
 
 // Weekly off schedule (frontend display)
 const WEEKLY_OFF: Record<string, number[]> = {
-  'Main Bazar': [0, 6],
-  'Milan Day': [0], 'Milan Night': [0], 'Milan Morning': [0],
-  'Rajdhani Day': [0], 'Rajdhani Night': [0],
-  'Time Bazar': [0], 'Time Bazar Morning': [0],
-  'Madhur Day': [0], 'Madhur Night': [0], 'Madhur Morning': [0],
-  'Kalyan': [0], 'Kalyan Morning': [0], 'Kalyan Night': [0],
-  'Sridevi': [0], 'Sridevi Morning': [0], 'Sridevi Night': [0],
-  'Supreme Day': [0], 'Supreme Night': [0],
+  'Main Bazar':         [0, 6], // Sunday + Saturday
+  'Milan Day':          [0], 'Milan Night': [0], 'Milan Morning': [0],
+  'Rajdhani Day':       [0], 'Rajdhani Night': [0],
+  'Time Bazar':         [0], 'Time Bazar Morning': [0],
+  'Madhur Day':         [0], 'Madhur Night':  [0], 'Madhur Morning': [0],
+  'Kalyan':             [0], 'Kalyan Morning': [0], 'Kalyan Night': [0],
+  'Sridevi':            [0], 'Sridevi Morning': [0], 'Sridevi Night': [0],
+  'Supreme Day':        [0], 'Supreme Night': [0],
 };
 
 interface MarketsResponse { data: { markets: Market[] } | Market[]; }
 
-// Countdown timer hook — counts down to a target HH:MM time today
-function useCountdown(targetTime: string): string {
+// Countdown timer hook — counts down to close_time - 20 min (lockout)
+function useCountdown(closeTime: string): string {
   const [countdown, setCountdown] = useState('');
   useEffect(() => {
     const tick = () => {
       const now = new Date();
-      const [th, tm] = targetTime.split(':').map(Number);
-      // lockout = 15 min before result
-      const lockoutMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), th, tm - 15, 0).getTime();
+      const [th, tm] = closeTime.split(':').map(Number);
+      // lockout = 20 min before close_time
+      const lockoutMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), th, tm - 20, 0).getTime();
       const diff = lockoutMs - now.getTime();
       if (diff <= 0) { setCountdown('Closing soon'); return; }
       const h = Math.floor(diff / 3600000);
@@ -54,7 +54,7 @@ function useCountdown(targetTime: string): string {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [targetTime]);
+  }, [closeTime]);
   return countdown;
 }
 
@@ -117,7 +117,7 @@ export default function Lobby(): React.ReactElement {
           </span>
         </div>
         <div className="bg-white/10 px-4 py-3">
-          <div className="grid grid-cols-3 gap-2 text-center mb-2">
+          <div className="grid grid-cols-2 gap-2 text-center mb-2">
             <div>
               <p className="text-white/60 text-xs">Open</p>
               <p className="text-white font-bold text-sm">{to12hr(market.open_time)}</p>
@@ -125,10 +125,6 @@ export default function Lobby(): React.ReactElement {
             <div>
               <p className="text-white/60 text-xs">Close</p>
               <p className="text-white font-bold text-sm">{to12hr(market.close_time)}</p>
-            </div>
-            <div>
-              <p className="text-white/60 text-xs">Result</p>
-              <p className="text-white font-bold text-sm">{to12hr(market.result_time)}</p>
             </div>
           </div>
           {isOpen && countdown && (

@@ -526,3 +526,131 @@ export async function manuallyEnterResult(
     enqueued: true,
   };
 }
+
+// ---------------------------------------------------------------------------
+// allocatePointsToAdmin
+// ---------------------------------------------------------------------------
+
+export interface AllocatePointsResult {
+  admin_id: string;
+  allocated_points: bigint;
+  used_points: bigint;
+  available_points: bigint;
+  allocation_id: string;
+}
+
+/**
+ * Superadmin allocates points to an admin.
+ */
+export async function allocatePointsToAdmin(
+  adminId: string,
+  amount: number,
+  note?: string,
+): Promise<AllocatePointsResult> {
+  if (amount <= 0) throw new AppError('VALIDATION_ERROR');
+
+  const result = await prisma.$transaction(async (tx) => {
+    const allocation = await tx.adminPointAllocation.create({
+      data: {
+        admin_id: adminId,
+        amount: BigInt(amount),
+        note: note ?? null,
+      },
+    });
+
+    const admin = await tx.admin.update({
+      where: { id: adminId },
+      data: { allocated_points: { increment: BigInt(amount) } },
+    });
+
+    return { admin, allocation };
+  });
+
+  return {
+    admin_id: adminId,
+    allocated_points: result.admin.allocated_points,
+    used_points: result.admin.used_points,
+    available_points: result.admin.allocated_points - result.admin.used_points,
+    allocation_id: result.allocation.id,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// getAdminPointHistory
+// ---------------------------------------------------------------------------
+
+export interface AdminPointAllocationRecord {
+  id: string;
+  admin_id: string;
+  admin_username: string;
+  amount: bigint;
+  note: string | null;
+  created_at: Date;
+}
+
+export interface GetAdminPointHistoryResult {
+  allocations: AdminPointAllocationRecord[];
+}
+
+/**
+ * Get all point allocations made to admins.
+ */
+export async function getAdminPointHistory(adminId?: string): Promise<GetAdminPointHistoryResult> {
+  const allocations = await prisma.adminPointAllocation.findMany({
+    where: adminId ? { admin_id: adminId } : undefined,
+    include: { admin: { select: { username: true } } },
+    orderBy: { created_at: 'desc' },
+  });
+
+  return {
+    allocations: allocations.map((a) => ({
+      id: a.id,
+      admin_id: a.admin_id,
+      admin_username: a.admin.username,
+      amount: a.amount,
+      note: a.note,
+      created_at: a.created_at,
+    })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// getAdminBalances
+// ---------------------------------------------------------------------------
+
+export interface AdminBalanceRecord {
+  id: string;
+  username: string;
+  allocated_points: bigint;
+  used_points: bigint;
+  available_points: bigint;
+}
+
+export interface GetAdminBalancesResult {
+  admins: AdminBalanceRecord[];
+}
+
+/**
+ * Get all admins with their point balances.
+ */
+export async function getAdminBalances(): Promise<GetAdminBalancesResult> {
+  const admins = await prisma.admin.findMany({
+    select: {
+      id: true,
+      username: true,
+      allocated_points: true,
+      used_points: true,
+    },
+    orderBy: { created_at: 'asc' },
+  });
+
+  return {
+    admins: admins.map((a) => ({
+      id: a.id,
+      username: a.username,
+      allocated_points: a.allocated_points,
+      used_points: a.used_points,
+      available_points: a.allocated_points - a.used_points,
+    })),
+  };
+}

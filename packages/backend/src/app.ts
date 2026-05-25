@@ -107,12 +107,24 @@ if (process.env['NODE_ENV'] !== 'test') {
       console.error('[DailyReset] Failed to schedule:', err);
     }
 
-    // Schedule market lockout jobs for today
+    // Schedule market lockout jobs for today + start lockout worker
     try {
-      const { scheduleAllMarketLockouts } = await import('./workers/marketLockout.js');
+      const { scheduleAllMarketLockouts, marketLockoutWorker } = await import('./workers/marketLockout.js');
       await scheduleAllMarketLockouts();
+      console.log('[MarketLockout] Worker started, lockouts scheduled.');
+      // Keep reference so worker stays alive
+      void marketLockoutWorker;
     } catch (err) {
       console.error('[MarketLockout] Failed to schedule:', err);
+    }
+
+    // Start winning calculation worker
+    try {
+      const { winningCalculationWorker } = await import('./workers/winningCalculation.js');
+      console.log('[WinningCalculation] Worker started.');
+      void winningCalculationWorker;
+    } catch (err) {
+      console.error('[WinningCalculation] Failed to start worker:', err);
     }
   });
 }

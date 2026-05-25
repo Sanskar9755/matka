@@ -46,7 +46,7 @@ function makeMarket(overrides: Partial<{
     id: 'market-uuid-1',
     name: 'Test Market',
     open_time: '09:00',
-    close_time: '21:00',
+    close_time: '21:30',
     result_time: '21:30',
     status: 'open',
     is_active: true,
@@ -79,13 +79,13 @@ describe('listActiveMarkets', () => {
   }
 
   it('returns computed_status = open when current time is before close_time and before lockout', async () => {
-    // Market: close=21:00, result=21:30, lockout=21:10
+    // Market: close=21:30, result=21:30, lockout=21:10
     // Current time: 10:00 — well before lockout
     mockCurrentTime(10, 0);
 
     const market = makeMarket({
       open_time: '09:00',
-      close_time: '21:00',
+      close_time: '21:30',
       result_time: '21:30',
       status: 'open',
     });
@@ -105,7 +105,7 @@ describe('listActiveMarkets', () => {
 
     const market = makeMarket({
       open_time: '09:00',
-      close_time: '21:00',
+      close_time: '21:30',
       result_time: '21:30',
       status: 'open',
     });
@@ -124,7 +124,7 @@ describe('listActiveMarkets', () => {
 
     const market = makeMarket({
       open_time: '09:00',
-      close_time: '21:00',
+      close_time: '21:30',
       result_time: '21:30',
       status: 'open',
     });
@@ -138,8 +138,8 @@ describe('listActiveMarkets', () => {
 
   it('returns computed_status = closed when current time >= close_time (but before lockout)', async () => {
     // Market: close=21:00, result=23:00, lockout=22:40
-    // Current time: 21:05 — past close but before lockout
-    mockCurrentTime(21, 5);
+    // Current time: 21:06 — past close but before lockout
+    mockCurrentTime(21, 6);
 
     const market = makeMarket({
       open_time: '09:00',
@@ -196,13 +196,13 @@ describe('listActiveMarkets', () => {
   });
 
   it('returns computed_status = open when current time is before close_time', async () => {
-    // Market: close=21:00, result=21:30, lockout=21:10
+    // Market: close=21:30, result=21:30, lockout=21:10
     // Current time: 20:59 — 1 minute before close
     mockCurrentTime(20, 59);
 
     const market = makeMarket({
       open_time: '09:00',
-      close_time: '21:00',
+      close_time: '21:30',
       result_time: '21:30',
       status: 'open',
     });
