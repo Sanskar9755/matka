@@ -139,6 +139,7 @@ export interface Bet {
   market_id: string;
   result_cycle_id: string;
   bet_type: BetType;
+  session: string;
   /**
    * Encoded selection string. Format by bet type:
    * - Single:       "5"       (digit 0–9)

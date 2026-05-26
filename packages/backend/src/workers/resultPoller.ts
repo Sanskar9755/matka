@@ -61,21 +61,32 @@ function parseResult(result: string): {
 } | null {
   if (!result || result === 'Loading...' || result.includes('Loading')) return null;
 
-  // Format: "123-45-678"
-  const match = result.match(/^(\d{1,3})-(\d{2})-(\d{1,3})$/);
-  if (!match) return null;
+  const cleanResult = result.trim();
 
-  const [, open_panna, jodi, close_panna] = match;
+  // 1. Try to match the full result first: "123-45-678"
+  const fullMatch = cleanResult.match(/^(\d{1,3})-(\d{2})-(\d{1,3})$/);
+  if (fullMatch) {
+    const [, open_panna, jodi, close_panna] = fullMatch;
+    const open_ank = jodi[0];
+    const close_ank = jodi[1];
+    return { open_panna, jodi, close_panna, open_ank, close_ank };
+  }
 
-  // Calculate ank (last digit of sum of digits)
-  const open_ank = String(
-    open_panna.split('').reduce((s, d) => s + parseInt(d), 0) % 10
-  );
-  const close_ank = String(
-    close_panna.split('').reduce((s, d) => s + parseInt(d), 0) % 10
-  );
+  // 2. Try to match open-only results: "123-4" or "123-4*" or "123-4-***" or "123-4-Loading..."
+  // It has a 3-digit open panna, a dash, and a 1-digit open ank.
+  const openMatch = cleanResult.match(/^(\d{1,3})-(\d)(?:[\s\S]*)$/);
+  if (openMatch) {
+    const [, open_panna, open_ank] = openMatch;
+    return {
+      open_panna,
+      jodi: '',
+      close_panna: '',
+      open_ank,
+      close_ank: '',
+    };
+  }
 
-  return { open_panna, jodi, close_panna, open_ank, close_ank };
+  return null;
 }
 
 /**

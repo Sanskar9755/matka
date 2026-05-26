@@ -69,6 +69,14 @@ export async function processWinningCalculation(
       return { processed: false, winCount: 0, lossCount: 0 };
     }
 
+    const isFullDeclaration = resultCycle.open_panna !== '' && resultCycle.close_panna !== '';
+    const isOpenDeclaration = resultCycle.open_panna !== '';
+
+    if (!isOpenDeclaration) {
+      console.log(`[WinningCalculation] No result declared yet for cycle=${resultCycleId}. Skipping.`);
+      return { processed: false, winCount: 0, lossCount: 0 };
+    }
+
     // 3. Fetch all pending bets for this result cycle
     const bets = await tx.bet.findMany({
       where: {
@@ -77,12 +85,28 @@ export async function processWinningCalculation(
       },
     });
 
-    if (bets.length === 0) {
-      // No bets to process — still mark as done
-      await tx.resultCycle.update({
-        where: { id: resultCycleId },
-        data: { calculation_done: true },
-      });
+    // Determine which bets we can process in this run
+    let betsToProcess = [];
+    if (isFullDeclaration) {
+      // If full result is declared, process ALL pending bets
+      betsToProcess = bets;
+    } else {
+      // If only open is declared, process ONLY open session bets (single, single_panna, double_panna, triple_panna)
+      betsToProcess = bets.filter((bet) => 
+        bet.session === 'open' &&
+        ['single', 'single_panna', 'double_panna', 'triple_panna'].includes(bet.bet_type)
+      );
+    }
+
+    if (betsToProcess.length === 0) {
+      // No bets to process in this run.
+      // If this is a full declaration, we can mark the cycle as calculation_done = true
+      if (isFullDeclaration) {
+        await tx.resultCycle.update({
+          where: { id: resultCycleId },
+          data: { calculation_done: true },
+        });
+      }
       return { processed: true, winCount: 0, lossCount: 0 };
     }
 
@@ -107,9 +131,9 @@ export async function processWinningCalculation(
     const winningBets: Array<{ id: string; user_id: string; points: bigint; winning_amount: bigint }> = [];
     const losingBetIds: string[] = [];
 
-    for (const bet of bets) {
+    for (const bet of betsToProcess) {
       const isWin = matchBet(
-        { bet_type: bet.bet_type as BetType, selection: bet.selection },
+        { bet_type: bet.bet_type as BetType, selection: bet.selection, session: bet.session },
         matchResult,
       );
 
@@ -182,11 +206,13 @@ export async function processWinningCalculation(
       });
     }
 
-    // 10. Set calculation_done = true
-    await tx.resultCycle.update({
-      where: { id: resultCycleId },
-      data: { calculation_done: true },
-    });
+    // 10. Set calculation_done = true if full declaration
+    if (isFullDeclaration) {
+      await tx.resultCycle.update({
+        where: { id: resultCycleId },
+        data: { calculation_done: true },
+      });
+    }
 
     console.log(
       `[WinningCalculation] Completed for cycle=${resultCycleId}: ${winningBets.length} wins, ${losingBetIds.length} losses.`,

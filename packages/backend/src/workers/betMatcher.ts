@@ -68,14 +68,20 @@ export function getPannaType(panna: string): 'single' | 'double' | 'triple' {
  * @returns      true if the bet wins, false otherwise
  */
 export function matchBet(
-  bet: Pick<Bet, 'bet_type' | 'selection'>,
+  bet: Pick<Bet, 'bet_type' | 'selection'> & { session?: string },
   result: MatchResult,
 ): boolean {
-  const { bet_type, selection } = bet;
+  const { bet_type, selection, session } = bet;
   const { open_panna, close_panna, jodi, open_ank, close_ank } = result;
 
   switch (bet_type) {
     case BetType.Single: {
+      if (session === 'open') {
+        return selection === open_ank;
+      }
+      if (session === 'close') {
+        return selection === close_ank;
+      }
       return selection === open_ank || selection === close_ank;
     }
 
@@ -87,6 +93,8 @@ export function matchBet(
       // Panna must have all 3 different digits
       const pannaType = getPannaType(selection);
       if (pannaType !== 'single') return false;
+      if (session === 'open') return selection === open_panna;
+      if (session === 'close') return selection === close_panna;
       return selection === open_panna || selection === close_panna;
     }
 
@@ -94,6 +102,8 @@ export function matchBet(
       // Panna must have exactly 2 same digits
       const pannaType = getPannaType(selection);
       if (pannaType !== 'double') return false;
+      if (session === 'open') return selection === open_panna;
+      if (session === 'close') return selection === close_panna;
       return selection === open_panna || selection === close_panna;
     }
 
@@ -101,6 +111,8 @@ export function matchBet(
       // Panna must have all 3 same digits
       const pannaType = getPannaType(selection);
       if (pannaType !== 'triple') return false;
+      if (session === 'open') return selection === open_panna;
+      if (session === 'close') return selection === close_panna;
       return selection === open_panna || selection === close_panna;
     }
 

@@ -282,3 +282,41 @@ describe('matchBet - edge cases', () => {
     expect(matchBet({ bet_type: BetType.DoublePanna, selection: '111' }, result)).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Session-aware matching
+// ---------------------------------------------------------------------------
+
+describe('matchBet - session-aware matching', () => {
+  it('respects open session for Single bet', () => {
+    // RESULT: open_ank = '3', close_ank = '6'
+    expect(matchBet({ bet_type: BetType.Single, selection: '3', session: 'open' }, RESULT)).toBe(true);
+    expect(matchBet({ bet_type: BetType.Single, selection: '6', session: 'open' }, RESULT)).toBe(false);
+  });
+
+  it('respects close session for Single bet', () => {
+    expect(matchBet({ bet_type: BetType.Single, selection: '6', session: 'close' }, RESULT)).toBe(true);
+    expect(matchBet({ bet_type: BetType.Single, selection: '3', session: 'close' }, RESULT)).toBe(false);
+  });
+
+  it('respects open session for SinglePanna bet', () => {
+    // RESULT: open_panna = '123', close_panna = '112' (double panna)
+    expect(matchBet({ bet_type: BetType.SinglePanna, selection: '123', session: 'open' }, RESULT)).toBe(true);
+    
+    const result: MatchResult = {
+      ...RESULT,
+      close_panna: '456', // single panna
+    };
+    // If session is 'open', should NOT match close_panna
+    expect(matchBet({ bet_type: BetType.SinglePanna, selection: '456', session: 'open' }, result)).toBe(false);
+  });
+
+  it('respects close session for SinglePanna bet', () => {
+    const result: MatchResult = {
+      ...RESULT,
+      close_panna: '456', // single panna
+    };
+    expect(matchBet({ bet_type: BetType.SinglePanna, selection: '456', session: 'close' }, result)).toBe(true);
+    expect(matchBet({ bet_type: BetType.SinglePanna, selection: '123', session: 'close' }, result)).toBe(false);
+  });
+});
