@@ -295,6 +295,16 @@ export interface BetHistoryItem {
   outcome: BetOutcome;
   winning_amount: bigint;
   placed_at: Date;
+  // Result cycle data — null if result not yet declared
+  result: {
+    open_panna: string;
+    close_panna: string;
+    jodi: string;
+    open_ank: string;
+    close_ank: string;
+    declared_at: Date;
+    calculation_done: boolean;
+  } | null;
 }
 
 export interface GetBetHistoryResult {
@@ -303,6 +313,8 @@ export interface GetBetHistoryResult {
 
 /**
  * Get all bets for a user with market name, bet type, points, outcome.
+ * Includes result cycle data so the frontend can show the declared result
+ * and compute a smart display status (pending / result_declared / win / loss).
  * Ordered by placed_at descending.
  */
 export async function getBetHistory(userId: string): Promise<GetBetHistoryResult> {
@@ -312,21 +324,59 @@ export async function getBetHistory(userId: string): Promise<GetBetHistoryResult
       market: {
         select: { name: true },
       },
+      result_cycle: {
+        select: {
+          open_panna: true,
+          close_panna: true,
+          jodi: true,
+          open_ank: true,
+          close_ank: true,
+          declared_at: true,
+          calculation_done: true,
+        },
+      },
     },
     orderBy: { placed_at: 'desc' },
   });
 
   return {
-    bets: bets.map((bet) => ({
-      id: bet.id,
-      market_name: bet.market.name,
-      bet_type: bet.bet_type as BetType,
-      session: bet.session,
-      selection: bet.selection,
-      points: bet.points,
-      outcome: bet.outcome as BetOutcome,
-      winning_amount: bet.winning_amount,
-      placed_at: bet.placed_at,
-    })),
+    bets: bets.map((bet) => {
+      const rc = bet.result_cycle;
+
+      // Determine if the relevant session result has been declared
+      const openDeclared = rc.open_panna !== '';
+      const closeDeclared = rc.close_panna !== '';
+
+      const sessionResultDeclared =
+        bet.session === 'open' ? openDeclared :
+        bet.session === 'close' ? closeDeclared :
+        openDeclared && closeDeclared;
+
+      // Only expose result data if the relevant session result is declared
+      const resultData = sessionResultDeclared
+        ? {
+            open_panna: rc.open_panna,
+            close_panna: rc.close_panna,
+            jodi: rc.jodi,
+            open_ank: rc.open_ank,
+            close_ank: rc.close_ank,
+            declared_at: rc.declared_at,
+            calculation_done: rc.calculation_done,
+          }
+        : null;
+
+      return {
+        id: bet.id,
+        market_name: bet.market.name,
+        bet_type: bet.bet_type as BetType,
+        session: bet.session,
+        selection: bet.selection,
+        points: bet.points,
+        outcome: bet.outcome as BetOutcome,
+        winning_amount: bet.winning_amount,
+        placed_at: bet.placed_at,
+        result: resultData,
+      };
+    }),
   };
 }
