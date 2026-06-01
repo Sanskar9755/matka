@@ -10,7 +10,7 @@ import { AppError } from '../../middleware/errorHandler.js';
 import { BetType, BetOutcome, MarketStatus } from '@matka/types';
 import type { Bet } from '@matka/types';
 import { publish } from '../../realtime/pubsub.js';
-import { isOpenSessionLocked } from '../markets/markets.service.js';
+import { isOpenSessionLocked, isCloseSessionLocked } from '../markets/markets.service.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -119,12 +119,22 @@ export async function placeBet(
     throw new AppError('MARKET_CLOSED');
   }
 
-  // 3. Check open session lock — set by the open-lock BullMQ job or dynamically via time
+  // 3. Session-specific lock checks (time-based, independent of DB status field)
   if (session === 'open') {
+    // Open bets lock 20 min before open_result_time
     const isLocked = isOpenSessionLocked({
       open_session_locked: market.open_session_locked,
       open_result_time: market.open_result_time,
       open_time: market.open_time,
+    });
+    if (isLocked) {
+      throw new AppError('MARKET_LOCKED');
+    }
+  } else if (session === 'close') {
+    // Close bets lock 20 min before close_time (result_time)
+    const isLocked = isCloseSessionLocked({
+      status: market.status,
+      close_time: market.close_time,
     });
     if (isLocked) {
       throw new AppError('MARKET_LOCKED');

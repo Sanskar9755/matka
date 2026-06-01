@@ -146,7 +146,8 @@ export async function setMarketStatus(id: string, status: MarketStatus): Promise
 export interface MarketWithComputedStatus extends Market {
   open_result_time: string;
   computed_status: MarketStatus;
-  open_session_locked: boolean; // true = open bets no longer accepted
+  open_session_locked: boolean;  // true = open bets no longer accepted
+  close_session_locked: boolean; // true = close bets no longer accepted
   mins_until_lockout: number;
   is_open_yet: boolean;
 }
@@ -243,6 +244,22 @@ export function isOpenSessionLocked(market: {
 }
 
 /**
+ * Check if close session is locked.
+ * Close bets lock 20 min BEFORE close_time.
+ * Also locked if DB status is already 'locked' or 'closed'.
+ */
+export function isCloseSessionLocked(market: {
+  status: string;
+  close_time: string;
+}): boolean {
+  if (market.status === 'locked' || market.status === 'closed') return true;
+  if (!market.close_time) return false;
+  const currentMinutes = getCurrentTimeInMinutes();
+  const closeLockMinutes = parseTimeToMinutes(market.close_time) - 20; // 20 min before close_time
+  return currentMinutes >= closeLockMinutes;
+}
+
+/**
  * Get minutes remaining until close lockout (close_time - 20 min).
  */
 export function minutesUntilLockout(close_time: string): number {
@@ -273,6 +290,10 @@ export async function listActiveMarkets(): Promise<ListActiveMarketsResult> {
       open_result_time: market.open_result_time,
       open_time: market.open_time,
     });
+    const close_session_locked = isCloseSessionLocked({
+      status: market.status,
+      close_time: market.close_time,
+    });
     const mins_until_lockout = minutesUntilLockout(market.close_time);
 
     return {
@@ -287,6 +308,7 @@ export async function listActiveMarkets(): Promise<ListActiveMarketsResult> {
       updated_at: market.updated_at,
       computed_status,
       open_session_locked,
+      close_session_locked,
       mins_until_lockout,
       is_open_yet: true,
     };
